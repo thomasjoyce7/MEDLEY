@@ -1,0 +1,42 @@
+.ipynb_checkpoints/
+*.out
+*.html
+*_files/
+
+# R session files
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# Python caches and environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+envs/
+
+# Ignore data files but keep directory structure visible
+data/cohorts/**
+!data/cohorts/.gitkeep
+
+data/derived/**
+!data/derived/.gitkeep
+
+data/embeddings/**
+!data/embeddings/.gitkeep
+
+data/external/**
+!data/external/.gitkeep
+
+data/llm_inputs/**
+!data/llm_inputs/.gitkeep
+
+data/logs/**
+!data/logs/.gitkeep
+
+data/raw/**
+!data/raw/.gitkeep
+
+data/results/**
+!data/results/.gitkeep

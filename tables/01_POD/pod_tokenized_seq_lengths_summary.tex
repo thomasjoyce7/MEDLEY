@@ -1,0 +1,19 @@
+\begin{table}
+\caption{Tokenized sequence length summary for the POD application}
+\label{tab:token_lengths}
+\begin{tabular}{llrrrrrrrr}
+\toprule
+Tokenizer & Template & Mean & Median & Min & Max & >512 (%) & >2048 (%) & >4096 (%) & % Truncated \\
+\midrule
+Clinical-Longformer & List & 606.30 & 64.00 & 64 & 16004 & 26.30 & 8.10 & 2.80 & 2.80 \\
+Clinical-Longformer & Text & 440.60 & 64.00 & 64 & 11039 & 21.50 & 5.20 & 1.10 & 1.10 \\
+Clinical-Longformer & LLM & 129.90 & 73.00 & 39 & 523 & 0.00 & 0.00 & 0.00 & 0.00 \\
+GatorTron-Base-2k & List & 445.60 & 69.00 & 63 & 11229 & 21.60 & 5.30 & 1.20 & 5.30 \\
+GatorTron-Base-2k & Text & 390.40 & 69.00 & 63 & 9574 & 19.60 & 4.00 & 0.70 & 4.00 \\
+GatorTron-Base-2k & LLM & 127.90 & 75.00 & 38 & 449 & 0.00 & 0.00 & 0.00 & 0.00 \\
+Longformer-Base-4096 & List & 606.30 & 64.00 & 64 & 16004 & 26.30 & 8.10 & 2.80 & 2.80 \\
+Longformer-Base-4096 & Text & 440.60 & 64.00 & 64 & 11039 & 21.50 & 5.20 & 1.10 & 1.10 \\
+Longformer-Base-4096 & LLM & 129.90 & 73.00 & 39 & 523 & 0.00 & 0.00 & 0.00 & 0.00 \\
+\bottomrule
+\end{tabular}
+\end{table}

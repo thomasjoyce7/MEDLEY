@@ -1,0 +1,72 @@
+\begin{table}[!h]
+\centering
+\caption{Clustering performance across algorithms and embedding types}
+\centering
+\begin{tabular}[t]{lllllr}
+\toprule
+Algorithm & Template & SS & CHI & DBI & Number of Clusters\\
+\midrule
+K-means++ & CL List & 0.739 ± 0.031 & 6.86e3 ± 9.42e2 & 0.881 ± 0.069 & 8\\
+ & CL Text & 0.740 ± 0.029 & 6.94e3 ± 9.11e2 & 0.916 ± 0.083 & 8\\
+ & GT-base-2k List & 0.761 ± 0.042 & 7.75e3 ± 1.67e3 & \underline{0.770 ± 0.083} & 8\\
+ & GT-base-2k Text & \textbf{0.773 ± 0.034} & \textbf{8.18e3 ± 1.46e3} & \textbf{0.732 ± 0.081} & 8\\
+ & LF List & 0.720 ± 0.039 & 6.30e3 ± 1.06e3 & 0.955 ± 0.060 & 8\\
+\addlinespace
+ & LF Text & 0.731 ± 0.019 & 6.69e3 ± 5.18e2 & 0.901 ± 0.047 & 8\\
+ & BC BERT List & 0.741 ± 0.026 & 7.24e3 ± 1.06e3 & 0.867 ± 0.077 & 8\\
+ & BC BERT Text & 0.765 ± 0.027 & \underline{8.17e3 ± 1.25e3} & 0.796 ± 0.089 & 8\\
+ & GT-base List & 0.721 ± 0.045 & 6.33e3 ± 1.52e3 & 0.836 ± 0.095 & 8\\
+ & GT-base Text & 0.755 ± 0.048 & 7.52e3 ± 1.93e3 & 0.787 ± 0.087 & 8\\
+\addlinespace
+ & BERT List & \underline{0.766 ± 0.018} & 7.84e3 ± 8.04e2 & 0.833 ± 0.078 & 8\\
+ & BERT Text & 0.764 ± 0.027 & 7.84e3 ± 1.08e3 & 0.790 ± 0.071 & 8\\
+\midrule\\
+GMM & CL List & 0.752 ± 0.006 & 5.95e3 ± 4.96e2 & 0.864 ± 0.050 & 8\\
+ & CL Text & 0.755 ± 0.008 & 6.99e3 ± 1.76e2 & 0.956 ± 0.013 & 8\\
+ & GT-base-2k List & 0.771 ± 0.015 & 7.15e3 ± 5.19e2 & 0.952 ± 0.165 & 8\\
+\addlinespace
+ & GT-base-2k Text & \textbf{0.792 ± 0.017} & \textbf{7.89e3 ± 6.82e2} & 0.843 ± 0.158 & 8\\
+ & LF List & 0.754 ± 0.007 & 6.87e3 ± 2.51e2 & 0.931 ± 0.038 & 8\\
+ & LF Text & 0.751 ± 0.000 & 6.95e3 ± 2.61e1 & 0.940 ± 0.002 & 8\\
+ & BC BERT List & 0.731 ± 0.023 & 6.36e3 ± 5.70e2 & 1.042 ± 0.134 & 8\\
+ & BC BERT Text & 0.778 ± 0.012 & 7.30e3 ± 7.91e2 & 0.970 ± 0.138 & 8\\
+\addlinespace
+ & GT-base List & 0.778 ± 0.006 & 7.31e3 ± 2.53e2 & \underline{0.817 ± 0.010} & 8\\
+ & GT-base Text & \underline{0.788 ± 0.009} & \underline{7.59e3 ± 3.50e2} & \textbf{0.785 ± 0.093} & 8\\
+ & BERT List & 0.756 ± 0.014 & 7.05e3 ± 5.52e2 & 0.938 ± 0.093 & 8\\
+ & BERT Text & 0.775 ± 0.010 & 7.18e3 ± 8.28e2 & 0.891 ± 0.127 & 8\\
+\midrule\\
+HDBSCAN & CL List & \underline{0.836} & \underline{1.26e4} & 0.529 & 7\\
+\addlinespace
+ & CL Text & 0.792 & 8.45e3 & 0.516 & 7\\
+ & GT-base-2k List & 0.766 & 7.79e3 & \underline{0.415} & 8\\
+ & GT-base-2k Text & \textbf{0.865} & \textbf{1.69e4} & \textbf{0.372} & 8\\
+ & LF List & 0.802 & 9.11e3 & 0.516 & 7\\
+ & LF Text & 0.819 & 1.16e4 & 0.517 & 7\\
+\addlinespace
+ & BC BERT List & 0.797 & 1.05e4 & 0.496 & 8\\
+ & BC BERT Text & 0.802 & 1.12e4 & 0.469 & 8\\
+ & GT-base List & 0.759 & 7.83e3 & 0.490 & 8\\
+ & GT-base Text & 0.762 & 7.91e3 & 0.459 & 8\\
+ & BERT List & 0.809 & 1.11e4 & 0.452 & 8\\
+\addlinespace
+ & BERT Text & 0.804 & 1.08e4 & 0.470 & 8\\
+\midrule\\
+AHC & CL List & 0.762 & 7.41e3 & 0.893 & 8\\
+ & CL Text & 0.751 & 6.50e3 & 1.074 & 8\\
+ & GT-base-2k List & 0.794 & 9.19e3 & 0.789 & 8\\
+ & GT-base-2k Text & 0.799 & 9.37e3 & 0.774 & 8\\
+\addlinespace
+ & LF List & 0.749 & 6.80e3 & 0.931 & 8\\
+ & LF Text & 0.755 & 6.96e3 & 0.920 & 8\\
+ & BC BERT List & 0.757 & 7.73e3 & 0.857 & 8\\
+ & BC BERT Text & 0.792 & \underline{9.61e3} & 0.760 & 8\\
+ & GT-base List & \underline{0.801} & 9.56e3 & \textbf{0.744} & 8\\
+\addlinespace
+ & GT-base Text & \textbf{0.809} & \textbf{9.94e3} & \underline{0.751} & 8\\
+ & BERT List & 0.771 & 8.02e3 & 0.851 & 8\\
+ & BERT Text & 0.784 & 8.85e3 & 0.791 & 8\\
+\midrule\\
+\bottomrule
+\end{tabular}
+\end{table}

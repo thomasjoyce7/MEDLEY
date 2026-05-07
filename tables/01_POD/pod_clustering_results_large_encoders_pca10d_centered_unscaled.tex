@@ -1,0 +1,43 @@
+\begin{table}[!h]
+\centering
+\caption{Clustering performance across algorithms and embedding types for large encoder models}
+\centering
+\begin{tabular}[t]{lllllr}
+\toprule
+Algorithm & Template & SS & CHI & DBI & Number of Clusters\\
+\midrule
+K-means++ & Qwen List & 0.432 ± 0.074 & \textbf{6.31e3 ± 5.01e2} & 1.182 ± 0.059 & 5\\
+ & Qwen Text & \underline{0.451 ± 0.063} & \underline{5.82e3 ± 4.34e2} & \underline{1.167 ± 0.056} & 5\\
+ & Qwen LLM & \textbf{0.468 ± 0.092} & 4.32e3 ± 5.52e2 & \textbf{1.125 ± 0.144} & 5\\
+ & SFR List & 0.384 ± 0.096 & 5.58e3 ± 4.27e2 & 1.318 ± 0.132 & 5\\
+ & SFR Text & 0.367 ± 0.093 & 4.94e3 ± 3.67e2 & 1.314 ± 0.144 & 5\\
+\addlinespace
+ & SFR LLM & 0.359 ± 0.069 & 3.17e3 ± 4e2 & 1.271 ± 0.150 & 5\\
+\midrule\\
+GMM & Qwen List & 0.258 ± 0.022 & \textbf{3.53e3 ± 2.31e2} & 1.499 ± 0.183 & 6\\
+ & Qwen Text & \textbf{0.277 ± 0.014} & 3.16e3 ± 2.89e2 & \textbf{1.303 ± 0.103} & 6\\
+ & Qwen LLM & 0.210 ± 0.027 & 1.93e3 ± 4.63e2 & 1.551 ± 0.170 & 6\\
+ & SFR List & 0.235 ± 0.009 & \underline{3.51e3 ± 2.59e1} & 1.439 ± 0.064 & 6\\
+\addlinespace
+ & SFR Text & 0.215 ± 0.014 & 2.98e3 ± 2.72e2 & 1.573 ± 0.104 & 6\\
+ & SFR LLM & \underline{0.258 ± 0.023} & 2.54e3 ± 1.93e2 & \underline{1.405 ± 0.118} & 6\\
+\midrule
+HDBSCAN & Qwen List & 0.403 & 5.45e3 & 0.930 & 3\\
+ & Qwen Text & 0.393 & 4.85e3 & 0.921 & 3\\
+ & Qwen LLM & \underline{0.531} & 4.29e3 & \underline{0.713} & 3\\
+\addlinespace
+ & SFR List & \textbf{0.565} & \textbf{1.02e4} & \textbf{0.697} & 2\\
+ & SFR Text & 0.527 & \underline{8.05e3} & 0.777 & 2\\
+ & SFR LLM & 0.344 & 3.14e3 & 1.102 & 5\\
+\midrule\\
+AHC & Qwen List & 0.362 & \textbf{6.08e3} & 1.191 & 6\\
+ & Qwen Text & 0.370 & \underline{5.74e3} & \underline{1.186} & 6\\
+\addlinespace
+ & Qwen LLM & \textbf{0.524} & 4.27e3 & \textbf{1.021} & 6\\
+ & SFR List & 0.303 & 4.90e3 & 1.350 & 6\\
+ & SFR Text & \underline{0.438} & 4.30e3 & 1.334 & 6\\
+ & SFR LLM & 0.291 & 3.36e3 & 1.287 & 6\\
+\midrule\\
+\bottomrule
+\end{tabular}
+\end{table}

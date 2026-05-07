@@ -1,0 +1,13 @@
+paths:
+  # Default local SQLite database path. R extraction scripts can override this
+  # with the MIMICIV_DB_PATH environment variable.
+  db: "data/external/mimic4.db"
+  raw_data: "data/raw/"
+  derived_data: "data/derived/"
+  external_data: "data/external/"
+  llm_inputs: "data/llm_inputs"
+  embeddings: "data/embeddings"
+  cohorts: "data/cohorts/"
+  figures: "figures/"
+  tables: "tables/"
+  logs: "data/logs/"

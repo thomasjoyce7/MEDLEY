@@ -1,0 +1,58 @@
+\begin{table}[!h]
+\centering
+\caption{Clustering performance across algorithms and embedding types}
+\centering
+\begin{tabular}[t]{lllllr}
+\toprule
+Algorithm & Template & SS & CHI & DBI & Number of Clusters\\
+\midrule
+K-means++ & CL List & \textbf{0.785 ± 0.068} & \textbf{1.43e5 ± 2.23e4} & \textbf{0.457 ± 0.065} & 5\\
+ & CL Text & \underline{0.776 ± 0.052} & 8.85e4 ± 6.49e3 & 0.474 ± 0.048 & 5\\
+ & CL LLM & 0.665 ± 0.040 & 3.61e4 ± 2.63e3 & 0.505 ± 0.007 & 5\\
+ & GT-base-2k List & 0.741 ± 0.050 & 7.17e4 ± 6.32e3 & 0.503 ± 0.032 & 5\\
+ & GT-base-2k Text & 0.730 ± 0.000 & 5.99e4 ± 1.38e-2 & 0.504 ± 0.000 & 5\\
+\addlinespace
+ & GT-base-2k LLM & 0.608 ± 0.055 & 2.85e4 ± 2.02e3 & 0.584 ± 0.026 & 5\\
+ & LF List & 0.761 ± 0.048 & \underline{1.03e5 ± 2.40e4} & \underline{0.460 ± 0.045} & 5\\
+ & LF Text & 0.756 ± 0.020 & 7.07e4 ± 5e3 & 0.481 ± 0.043 & 5\\
+ & LF LLM & 0.691 ± 0.046 & 4.29e4 ± 4.41e3 & 0.485 ± 0.020 & 5\\
+\midrule\\
+GMM & CL List & \textbf{0.720 ± 0.035} & \textbf{1.28e5 ± 1.83e4} & \underline{0.519 ± 0.024} & 6\\
+\addlinespace
+ & CL Text & 0.681 ± 0.022 & 7.04e4 ± 1.05e4 & 0.647 ± 0.055 & 6\\
+ & CL LLM & 0.548 ± 0.008 & 2.60e4 ± 3.53e3 & 0.690 ± 0.199 & 6\\
+ & GT-base-2k List & 0.568 ± 0.159 & 3.59e4 ± 5.18e3 & 0.771 ± 0.160 & 6\\
+ & GT-base-2k Text & 0.683 ± 0.001 & 4.98e4 ± 3.14e2 & \textbf{0.512 ± 0.002} & 6\\
+ & GT-base-2k LLM & 0.453 ± 0.038 & 2.01e4 ± 4.83e2 & 0.784 ± 0.083 & 6\\
+\addlinespace
+ & LF List & \underline{0.700 ± 0.021} & \underline{1.19e5 ± 1.30e4} & 0.581 ± 0.134 & 6\\
+ & LF Text & 0.594 ± 0.064 & 4.07e4 ± 1.71e4 & 0.854 ± 0.343 & 6\\
+ & LF LLM & 0.560 ± 0.027 & 3.10e4 ± 6.18e3 & 0.574 ± 0.030 & 6\\
+\midrule\\
+HDBSCAN & CL List & \underline{0.837} & \underline{1.39e5} & \textbf{0.238} & 6\\
+ & CL Text & \textbf{0.842} & 1.09e5 & \underline{0.302} & 6\\
+\addlinespace
+ & CL LLM & 0.701 & 1.85e4 & 0.413 & 3\\
+ & GT-base-2k List & 0.745 & 1.56e4 & 0.320 & 4\\
+ & GT-base-2k Text & 0.659 & 1.22e4 & 0.464 & 2\\
+ & GT-base-2k LLM & 0.575 & 7.82e3 & 0.444 & 5\\
+ & LF List & 0.736 & \textbf{2.10e5} & 0.329 & 8\\
+\addlinespace
+ & LF Text & 0.732 & 5.95e4 & 0.343 & 7\\
+ & LF LLM & 0.553 & 9.83e3 & 0.407 & 5\\
+\midrule\\
+AHC & CL List & \textbf{0.791} & \textbf{1.88e5} & \underline{0.382} & 6\\
+ & CL Text & 0.765 & 9.36e4 & 0.448 & 6\\
+ & CL LLM & 0.647 & 3.49e4 & 0.521 & 6\\
+\addlinespace
+ & GT-base-2k List & 0.725 & 6.91e4 & 0.546 & 6\\
+ & GT-base-2k Text & 0.699 & 5.71e4 & 0.488 & 6\\
+ & GT-base-2k LLM & 0.508 & 3.08e4 & 0.658 & 6\\
+ & LF List & \underline{0.791} & \underline{1.48e5} & \textbf{0.373} & 6\\
+ & LF Text & 0.748 & 7.28e4 & 0.444 & 6\\
+\addlinespace
+ & LF LLM & 0.694 & 4.79e4 & 0.503 & 6\\
+\midrule\\
+\bottomrule
+\end{tabular}
+\end{table}

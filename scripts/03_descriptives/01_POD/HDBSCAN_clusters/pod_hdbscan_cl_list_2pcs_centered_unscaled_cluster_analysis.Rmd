@@ -1,0 +1,2688 @@
+---
+title: "POD Application HDBSCAN CL List Template Cluster Analysis"
+subtitle: Cluster using the first two PCs from PCA, centered and unscaled
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+# Set working directory as project root directory 
+knitr::opts_knit$set(root.dir = ".")
+```
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+# Import libraries
+library(readr)
+library(tidyverse)
+library(cluster)
+library(clusterCrit)
+library(uwot)
+library(proxy)
+library(kableExtra)
+library(forcats)
+library(lubridate)
+library(survival)
+library(stringr)
+library(scales)
+library(webshot2)
+
+# Import data 
+cluster_assignments <- read_csv("data/cohorts/01_POD/HDBSCAN_clusters/pod_hdbscan_cl_list_clusters_2pcs_centered_unscaled_100minPts.csv")
+all_pod_study_cohort_features <- read_csv("data/cohorts/final_cohort_features.csv")
+pod_medications <- read_csv("data/derived/pod_medications_cleaned.csv")
+embeddings <- read_csv("data/embeddings/01_POD/pod_clinical_longformer_list_template_embeddings.csv")
+rass_scores <- read_csv("data/derived/01_POD/pod_pos_rass_scores_cleaned.csv")
+```
+
+# Data Cleaning
+
+```{r data cleaning, echo=TRUE, message=FALSE, warning=FALSE}
+# Add cluster assignment column to pod_study_cohort_features
+all_pod_study_cohort_features <- left_join(all_pod_study_cohort_features, cluster_assignments, by = "subject_id")
+
+# Filter out HDBSCAN noise observations from pod_study_cohort_features 
+noise_observations <- all_pod_study_cohort_features %>% filter(cluster == 0)
+pod_study_cohort_features <- all_pod_study_cohort_features %>% filter(cluster != 0)
+
+# Add column to pod_study_cohort_features for days from first surgery to first positive CAM-ICU result
+pod_study_cohort_features <- pod_study_cohort_features %>% mutate(first_surgery_to_pod_pos_days = as.numeric(difftime(first_cam_positive_time, first_surgery_date, units = "days")))
+
+# Add binary indicator column for in-hospital mortality to pod_study_cohort_features 
+pod_study_cohort_features <- pod_study_cohort_features %>%
+  mutate(mortality = case_when(is.na(deathtime) == TRUE ~ "No",
+         is.na(deathtime) == FALSE ~ "Yes"))
+
+# Add column for delirium endtime to ponv_study_cohort_features (defined as first_cam_positive_time + pod_resolution_days)
+pod_study_cohort_features <- pod_study_cohort_features %>%
+  mutate(
+    delirium_endtime = ymd_hms(first_cam_positive_time) + ddays(pod_resolution_days)
+  )
+
+# Filter pod_medications to subjects in pod_study_cohort_features
+pod_medications_filtered <- pod_medications %>% filter(subject_id %in% pod_study_cohort_features$subject_id)
+
+# Add columns to pod_medications_filtered
+pod_medications_filtered <- left_join(pod_medications_filtered, pod_study_cohort_features %>% select(subject_id, first_surgery_date, first_cam_positive_time, delirium_endtime, pod_resolution_days, los_days, cluster), by = "subject_id")
+
+# Rename Rivastigmine Tartrate as Rivastigmine
+pod_medications_filtered <- pod_medications_filtered %>% mutate(medication = case_when(medication == "Rivastigmine Tartrate" ~ "Rivastigmine", TRUE ~ medication))
+
+# Rename routes to uppercase 
+pod_medications_filtered <- pod_medications_filtered %>%
+  mutate(
+    route = str_to_sentence(route),
+    route = str_replace(route, "^Iv\\b", "IV")
+  )
+
+# Filter rass_scores to subjects in pod_study_cohort_features
+rass_scores_filtered <- rass_scores %>% filter(subject_id %in% pod_study_cohort_features$subject_id)
+
+# Add columns to rass_scores_filtered 
+rass_scores_filtered <- left_join(rass_scores_filtered, pod_study_cohort_features %>% select(subject_id, first_surgery_date, first_cam_positive_time, delirium_endtime, cluster), by = "subject_id")
+
+# Add column for total POD medications administered to pod_study_cohort_features 
+pod_med_admin <- pod_medications_filtered %>%
+  count(subject_id, name = "total_pod_med_admin")
+
+pod_study_cohort_features <- pod_study_cohort_features %>%
+  left_join(pod_med_admin, by = "subject_id") %>%
+  mutate(
+    total_pod_med_admin = coalesce(total_pod_med_admin, 0L))
+```
+
+# Colors and Themes 
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+# Colorblind friendly cluster colors 
+cluster_colors <- c(
+  "1" = "#56B4E9",
+  "2" = "#E69F00",  
+  "3" = "#009E73",  
+  "4" = "#0072B2",  
+  "5" = "#D55E00",  
+  "6" = "#CC79A7",
+  "7" = "#F0E442",
+  "8" = "#999999")
+
+# Nature themed ggplot
+theme_nature <- theme_minimal(base_size = 11, base_family = "") +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black", size = 0.3),
+    axis.ticks = element_line(color = "black", size = 0.3),
+    axis.text  = element_text(size = 11),
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 11),
+    legend.position = "right",
+    legend.text  = element_text(size = 11),
+    legend.title = element_text(size = 11)
+  )
+```
+
+# 2D PCA Cluster Visualization
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, eval=TRUE}
+# 2D PCA visualization of the clusters
+
+# Filter embeddings to subjects assigned to a cluster
+cl_list_emb_filtered <- embeddings %>% filter(subject_id %in% pod_study_cohort_features$subject_id)
+
+# PCA
+pca_result <- prcomp(cl_list_emb_filtered %>% select(-subject_id), center = TRUE, scale. = FALSE)
+pca_data <- pca_result$x[, 1:2]
+pca_data <- data.frame(pca_data)
+
+# Add subject_id and cluster assignment back to pca_data
+pca_clean <- cbind(pod_study_cohort_features %>% select(subject_id, cluster), pca_data)
+
+# 2D PCA for cluster visualization
+plot_df <- data.frame(
+    PC1 = pca_clean$PC1,
+    PC2 = pca_clean$PC2,
+    Cluster = factor(pca_clean$cluster)  # factor for discrete colors
+  )
+
+# PCA Plot
+pca_plot <- ggplot(plot_df, aes(x = PC1, y = PC2, color = Cluster)) +
+    geom_point(size = 2, alpha = 0.8) +
+    scale_color_manual(values = cluster_colors) +
+    labs(
+      #title = "2D PCA visualization of the clusters",
+      #subtitle = "Only center embeddings and keep the first two PCs",
+      x = "PC 1",
+      y = "PC 2"
+    ) + theme_nature
+
+pca_plot
+
+ggsave(
+  "figures/main/01_POD/pod_2d_pca_plot.png",
+  pca_plot,
+  width  = 7.0,
+  height = 4.5,
+  dpi    = 300,
+  bg     = "white"
+)
+```
+
+# 2D UMAP Cluster Visualization
+
+```{r, eval=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+library(uwot)
+
+# Filter embeddings to subjects assigned to a cluster
+cl_list_emb_filtered <- embeddings %>%
+  filter(subject_id %in% pod_study_cohort_features$subject_id) %>%
+  arrange(subject_id)
+
+# Make sure cluster labels are aligned by subject_id
+cluster_df <- pod_study_cohort_features %>%
+  select(subject_id, cluster) %>%
+  arrange(subject_id)
+
+# UMAP input matrix
+embedding_mat <- cl_list_emb_filtered %>%
+  select(-subject_id) %>%
+  as.matrix()
+
+# 2D UMAP
+set.seed(42)
+
+umap_result <- uwot::umap(
+  embedding_mat,
+  n_neighbors = 50,
+  min_dist = 0.3,
+  n_components = 2,
+  metric = "cosine",
+  scale = FALSE,
+  init = "spectral",
+  n_threads = parallel::detectCores() - 1,
+  verbose = FALSE
+)
+
+# Add subject_id and cluster assignment
+umap_data <- as.data.frame(umap_result) %>%
+  rename(UMAP1 = V1, UMAP2 = V2) %>%
+  mutate(subject_id = cl_list_emb_filtered$subject_id) %>%
+  left_join(cluster_df, by = "subject_id") %>%
+  mutate(Cluster = factor(cluster))
+
+# UMAP plot
+umap_plot <- ggplot(umap_data, aes(x = UMAP1, y = UMAP2, color = Cluster)) +
+  geom_point(size = 2, alpha = 0.8) +
+  scale_color_manual(values = cluster_colors) +
+  labs(
+    x = "UMAP 1",
+    y = "UMAP 2"
+  ) +
+  theme_nature
+
+umap_plot
+
+ggsave(
+  "figures/main/01_POD/pod_2d_umap_plot.png",
+  umap_plot,
+  width  = 7.0,
+  height = 4.5,
+  dpi    = 300,
+  bg     = "white"
+)
+```
+
+# Cluster Summary Table
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Data for KM estimation
+surv_data <- pod_study_cohort_features %>%
+  mutate(
+    cluster = factor(cluster, labels = sort(unique(cluster))),
+    time  = pod_resolution_days,
+    event = as.integer(!censored)   # 1 = POD resolved, 0 = censored
+  )
+
+# Fit KM by cluster
+km_fit <- survfit(Surv(time, event) ~ cluster, data = surv_data)
+
+# Extract KM-estimated median and 95% CI
+km_medians <- summary(km_fit)$table %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("cluster") %>%
+  mutate(
+    cluster = sub("^cluster=", "", cluster),
+    km_median_pod_resolution = paste0(
+      sprintf("%.2f", median),
+      " (",
+      sprintf("%.2f, %.2f", `0.95LCL`, `0.95UCL`),
+      ")"
+    )
+  ) %>%
+  select(cluster, km_median_pod_resolution)
+
+# Extract KM-estimated % resolved by day 7
+km_day7 <- summary(km_fit, times = 7) %>%
+  with(
+    data.frame(
+      cluster = sub("^cluster=", "", strata),
+      km_percent_resolved_day7 = paste0(
+        sprintf("%.1f", 100 * (1 - surv)),
+        "%")))
+
+# Create cluster summary 
+cluster_summary <- pod_study_cohort_features %>%
+  mutate(
+    cluster = factor(cluster, labels = sort(unique(cluster))),
+    pod_medication_use = factor(pod_medication_use, levels = c("No", "Yes"))
+  ) %>%
+  group_by(cluster) %>%
+  summarise(
+    count = n(),
+
+    pod_medication_use_binary = ifelse(
+      any(pod_medication_use == "Yes"),
+      "Yes",
+      "No"
+    ),
+
+    total_pod_med_admin = paste0(
+      sprintf("%.0f", median(total_pod_med_admin, na.rm = TRUE)),
+      " (",
+      sprintf("%.0f, %.0f",
+              min(total_pod_med_admin, na.rm = TRUE),
+              max(total_pod_med_admin, na.rm = TRUE)),
+      ")"
+    ),
+
+    age_mean_sd = paste0(
+      sprintf("%.1f", mean(age, na.rm = TRUE)),
+      " (",
+      sprintf("%.1f", sd(age, na.rm = TRUE)),
+      ")"
+    ),
+
+    percent_male = paste0(sprintf(
+      "%.1f",
+      100 * mean(gender == "Male", na.rm = TRUE)
+    ), "%"),
+
+    percent_ventilator = paste0(sprintf(
+      "%.1f",
+      100 * mean(ventilator_use == "Yes", na.rm = TRUE)
+    ), "%"),
+
+    .groups = "drop"
+  ) %>%
+  left_join(km_medians, by = "cluster") %>%
+left_join(km_day7, by = "cluster")
+
+colnames(cluster_summary) <- c(
+  "Cluster",
+  "Count",
+  "POD Medication Use",
+  "Median POD Med Admin (Min, Max)",
+  "Mean Age (SD)",
+  "% Male",
+  "% Ventilator Use",
+  "Median POD Resolution Days (95% CI)",
+  "% Resolved by Day 7"
+)
+
+# Ensure named vector for colors
+cluster_color_map <- cluster_colors
+names(cluster_color_map) <- c(1,2,3,4,5,6)
+
+cluster_table_kable <- cluster_summary %>%
+  kable(
+    format = "html",
+    escape = FALSE,
+    align = "lcccccccc"
+  ) %>%
+  kable_styling(
+    full_width = FALSE,
+    bootstrap_options = NULL,
+    font_size = 14
+  ) %>%
+
+  # Fix column widths (this enables wrapping)
+  column_spec(1, width = "1.5cm") %>%   # Cluster
+  column_spec(2, width = "1.5cm") %>%   # Count
+  column_spec(3, width = "3.5cm") %>%   # POD Medication Use
+  column_spec(4, width = "3.5cm") %>%   # Median POD Med Admin
+  column_spec(5, width = "2.6cm") %>%   # Age
+  column_spec(6, width = "2.4cm") %>%   # Gender
+  column_spec(7, width = "2.8cm") %>%   # Ventilator use 
+  column_spec(8, width = "4.0cm") %>%   # Median POD resolution time
+  column_spec(9, width = "3.5cm") %>%   # % Resolved by Day 7
+  column_spec(
+    1,
+    bold = TRUE,
+    background = cluster_color_map[cluster_summary$Cluster],
+    color = "black"
+  )
+
+cluster_table_kable
+
+# Save table as a PNG
+save_kable(
+  cluster_table_kable,
+  file = "figures/main/01_POD/pod_cluster_summary_table_for_figure.png",
+  zoom = 2
+)
+```
+
+# Cluster Phenotype Table
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+cluster_summary <- data.frame(
+  Cluster = c(1, 2, 3, 4, 5, 6),
+  Phenotype = c("Brief delirium without pharmacologic intervention",
+                "Prolonged delirium with intensive sedative use and sustained mechanical ventilation",
+                "Intermediate-resolution delirium with sedative-heavy management and frequent mechanical ventilation",
+         "Intermediate-resolution delirium with balanced pharmacologic management, favoring sedatives",
+         "Intermediate-resolution delirium with balanced pharmacologic management, favoring antipsychotics",
+                "Intermediate-resolution delirium with targeted pharmacologic management (predominantly antipsychotics)")
+)
+  
+# Ensure named vector for colors
+cluster_color_map <- cluster_colors
+names(cluster_color_map) <- levels(cluster_summary$Cluster)
+
+cluster_table_kable <- cluster_summary %>%
+  kable(
+    format = "html",
+    escape = FALSE,
+    align = "lc"
+  ) %>%
+  kable_styling(
+    full_width = FALSE,
+    bootstrap_options = NULL,
+    font_size = 14
+  ) %>%
+
+  # Fix column widths (this enables wrapping)
+  column_spec(1, width = "1.5cm") %>%   # Cluster
+  column_spec(2, width = "10.5cm") %>%   # Phenotype 
+  column_spec(
+    1,
+    bold = TRUE,
+    background = cluster_color_map[cluster_summary$Cluster],
+    color = "black"
+  )
+
+cluster_table_kable
+
+# Save table as a PNG
+save_kable(
+  cluster_table_kable,
+  file = "figures/main/01_POD/pod_cluster_phenotype_table_for_figure.png",
+  zoom = 2
+)
+```
+
+
+# POD Medications
+
+## Medication Administration Percentages Table
+
+```{r, echo=FALSE, message=FALSE}
+medication_pct_table <- pod_medications_filtered %>%
+  group_by(cluster, medication) %>%
+  summarise(n = n(), .groups = "drop_last") %>%
+  mutate(
+    percentage = round(100 * n / sum(n), 2)
+  ) %>%
+  ungroup() %>%
+  select(-n) %>%
+  pivot_wider(
+    names_from = cluster,
+    values_from = percentage,
+    values_fill = 0
+  ) %>%
+  rename_with(~ paste("Cluster", .x), -medication)
+
+kable(medication_pct_table, caption = "POD Administration Percentages by Cluster")
+```
+
+## Radar Plot for POD Medication Administration Percentages
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+medication_order <- c("Dexmedetomidine", "Quetiapine", "Haloperidol", "Olanzapine", "Risperidone", "Chlorpromazine", "Rivastigmine")
+
+medication_counts <- pod_medications_filtered %>% 
+  mutate(medication = factor(medication, levels = medication_order)) %>%
+  group_by(cluster, medication) %>%
+  summarise(n_admin = n(), .groups = "drop_last") %>%
+  mutate(percentage = round(100 * n_admin / sum(n_admin),2)) %>%
+  arrange(cluster, desc(percentage))
+
+# Step 1: Wide format (clusters as rows, meds as columns)
+radar_data <- medication_counts %>%
+  select(cluster, medication, percentage) %>%
+  pivot_wider(names_from = medication, values_from = percentage, values_fill = 0)
+
+radar_data <- radar_data %>%
+  select(cluster, all_of(medication_order))
+
+# Step 2: Add required max/min rows for fmsb
+radar_scaled <- rbind(
+  rep(100, ncol(radar_data)-1),
+  rep(0, ncol(radar_data)-1),
+  radar_data[,-1]
+)
+rownames(radar_scaled) <- c("max", "min", paste0("Cluster ", radar_data$cluster))
+
+# Extract colors in cluster order
+radar_cluster_ids <- as.character(radar_data$cluster)
+radar_colors <- cluster_colors[radar_cluster_ids]
+
+# Save as a png image
+png(
+  filename = "figures/main/01_POD/pod_medication_admin_pct_radar.png",
+  width  = 7.0,      # inches
+  height = 4.5,      # inches
+  units  = "in",
+  res    = 300,      # DPI for journals
+  bg     = "white"
+)
+
+# Adjust the margins 
+par(mar = c(0, 0, 0, 2.8)) # bottom, left, top, right
+
+fmsb::radarchart(radar_scaled,
+                 axistype = 0,
+                 pcol = radar_colors,
+                 plwd = 0.5, # line width
+                 plty = 1,
+                 cglcol = "grey",
+                 cglty = 1,
+                 axislabcol = "grey20",
+                 caxislabels = c(0, 20, 40, 60, 80, 100),
+                 cglwd = 0.8,
+                 vlcex = 0.9, # medication label sizes
+                 cex.main = 0.8)
+
+legend("topright",
+       legend = paste0("Cluster ", radar_cluster_ids),
+       col = radar_colors,
+       lty = 1, lwd = 1.4, cex = 0.8,
+       inset = c(-0.05, 0.05),
+       xpd = TRUE)
+
+# Close device
+dev.off()
+```
+
+## Administration Modes
+
+```{r, echo=FALSE, message=FALSE}
+route_pct_table <- pod_medications_filtered %>%
+  group_by(cluster, route) %>%
+  summarise(n = n(), .groups = "drop_last") %>%
+  mutate(
+    percentage = round(100 * n / sum(n), 2)
+  ) %>%
+  ungroup() %>%
+  select(-n) %>%
+  pivot_wider(
+    names_from = cluster,
+    values_from = percentage,
+    values_fill = 0
+  ) %>%
+  rename_with(~ paste("Cluster", .x), -route)
+
+kable(route_pct_table, caption = "POD Administration Routes by Cluster")
+```
+
+## Radar Plot for Administration Modes
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+route_counts <- pod_medications_filtered %>% 
+  group_by(cluster, route) %>%
+  summarise(n_admin = n(), .groups = "drop_last") %>%
+  mutate(percentage = round(100 * n_admin / sum(n_admin),2)) %>%
+  arrange(cluster, desc(percentage))
+
+# Step 1: Wide format (clusters as rows, meds as columns)
+radar_data <- route_counts %>%
+  select(cluster, route, percentage) %>%
+  pivot_wider(names_from = route, values_from = percentage, values_fill = 0)
+
+# Step 2: Add required max/min rows for fmsb
+radar_scaled <- rbind(
+  rep(100, ncol(radar_data)-1),
+  rep(0, ncol(radar_data)-1),
+  radar_data[,-1]
+)
+rownames(radar_scaled) <- c("max", "min", paste0("Cluster ", radar_data$cluster))
+
+# Extract colors in cluster order
+radar_cluster_ids <- as.character(radar_data$cluster)
+radar_colors <- cluster_colors[radar_cluster_ids]
+
+# Save as a png image
+png(
+  filename = "figures/main/01_POD/pod_medication_routes_radar.png",
+  width  = 7.0,      # inches
+  height = 4.5,      # inches
+  units  = "in",
+  res    = 300,      # DPI for journals
+  bg     = "white"
+)
+
+# Adjust the margins 
+par(mar = c(0, 0, 0, 2.8)) # bottom, left, top, right
+
+fmsb::radarchart(radar_scaled,
+                 axistype = 0,
+                 pcol = radar_colors,
+                 plwd = 0.5, # line width
+                 plty = 1,
+                 cglcol = "grey",
+                 cglty = 1,
+                 axislabcol = "grey20",
+                 caxislabels = c(0, 20, 40, 60, 80, 100),
+                 cglwd = 0.8,
+                 vlcex = 0.9, # route label sizes
+                 cex.main = 0.8)
+
+legend("topright",
+       legend = paste0("Cluster ", radar_cluster_ids),
+       col = radar_colors,
+       lty = 1, lwd = 1.4, cex = 0.8,
+       inset = c(-0.05, 0.05),
+       xpd = TRUE)
+
+# Close device
+dev.off()
+```
+
+## Medication Type Switches (Mean switches per cluster)
+
+```{r, echo=FALSE, message=FALSE}
+# Order medications and identify switches within each subject
+pod_switches <- pod_medications_filtered %>%
+  arrange(subject_id, starttime) %>%
+  group_by(subject_id) %>%
+  mutate(
+    prev_medication = lag(medication),
+    is_switch = !is.na(prev_medication) & medication != prev_medication
+  ) %>%
+  ungroup()
+
+# Summarize switches per subject
+switch_summary <- pod_switches %>%
+  group_by(subject_id, cluster) %>%
+  summarise(
+    n_switches = sum(is_switch),
+    .groups = "drop"
+  ) %>%
+  group_by(cluster) %>%
+  summarise(
+    mean_switches = mean(n_switches),
+    sd_switches   = sd(n_switches),
+    n_subjects    = n(),
+    .groups = "drop"
+  )
+
+# Bar plot for mean number of switches with error bars
+ggplot(
+  switch_summary,
+  aes(x = factor(cluster), y = mean_switches, fill = factor(cluster))
+) +
+  geom_col() +
+  geom_errorbar(
+    aes(
+      ymin = mean_switches - sd_switches / sqrt(n_subjects),
+      ymax = mean_switches + sd_switches / sqrt(n_subjects)
+    ),
+    width = 0.2
+  ) +
+geom_text(
+  aes(
+    y = mean_switches + sd_switches / sqrt(n_subjects),
+    label = sprintf("%.1f", mean_switches)
+  ),
+  vjust = -0.7,
+  size = 3.5
+)+
+  scale_fill_manual(values = cluster_colors, guide = "none") +
+  labs(
+    x = "Cluster",
+    y = "Mean medication switches per patient"
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15)))+
+  theme_nature
+```
+
+## Medication Type Switches (Percentage per cluster)
+
+```{r, echo=FALSE, message=FALSE}
+# Order medications and identify switches within each subject
+pod_switches <- pod_medications_filtered %>%
+  arrange(subject_id, starttime) %>%
+  group_by(subject_id) %>%
+  mutate(
+    prev_medication = lag(medication),
+    is_switch = !is.na(prev_medication) & medication != prev_medication
+  ) %>%
+  ungroup()
+
+# Subject-level switch indicator
+switch_subject <- pod_switches %>%
+  group_by(subject_id, cluster) %>%
+  summarise(
+    any_switch = any(is_switch),
+    .groups = "drop"
+  )
+
+switch_percent <- switch_subject %>%
+  group_by(cluster) %>%
+  summarise(
+    n_switched        = sum(any_switch),
+    n_subjects        = n(),
+    percent_switched  = 100 * n_switched / n_subjects,
+    .groups = "drop"
+  )
+
+switch_pct_plot <- ggplot(
+  switch_percent,
+  aes(x = factor(cluster), y = percent_switched, fill = factor(cluster))
+) +
+  geom_col(width = 0.7) +
+  geom_text(
+     aes(
+    label = paste0(
+      sprintf("%.1f%%", percent_switched),
+      "\n(n=", n_switched, ")"
+    )),
+    vjust = -0.3,
+    size = 3.5
+  ) +
+  scale_fill_manual(values = cluster_colors, guide = "none") +
+  labs(
+    x = "Cluster",
+    y = "Patients with ≥1 medication switch (%)"
+  ) +
+  scale_y_continuous(
+    limits = c(0, 100),
+    expand = expansion(mult = c(0, 0.1))
+  ) +
+  theme_nature
+
+switch_pct_plot
+
+ggsave(
+  "figures/main/01_POD/pod_medication_switch_percentages_by_cluster_bar_plot.png",
+  switch_pct_plot,
+  width  = 7.0,
+  height = 4.5,
+  dpi    = 300,
+  bg     = "white")
+```
+
+## Medication Type Switches (Most common switches)
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+pod_switches <- pod_medications_filtered %>%
+  arrange(subject_id, starttime) %>%
+  group_by(subject_id) %>%
+  mutate(
+    prev_medication = lag(medication),
+    is_switch = !is.na(prev_medication) & medication != prev_medication
+  ) %>%
+  ungroup()
+
+# Extract the most common switches 
+common_switches <- pod_switches %>%
+  filter(is_switch) %>%
+  mutate(
+    switch = paste(prev_medication, "→", medication)
+  ) %>%
+  count(cluster, switch, sort = TRUE)
+
+top_medication_switches_overall <- common_switches %>%
+  group_by(switch) %>%
+  summarise(
+    total_n = sum(n),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(total_n)) %>%
+  slice_head(n = 10)
+
+top_switches_by_cluster <- common_switches %>%
+  group_by(cluster) %>%
+  slice_max(n, n = 3) %>%
+  ungroup()
+
+kable(top_switches_by_cluster, caption = "Top medication switches by cluster")
+```
+
+## Medication Type Switches (Heatmap)
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+med_class_map <- tibble(
+  medication = c(
+    "Dexmedetomidine",
+    "Quetiapine",
+    "Haloperidol",
+    "Olanzapine",
+    "Risperidone",
+    "Chlorpromazine",
+    "Rivastigmine"
+  ),
+  med_class = c(
+    "Sedative",          # Dexmedetomidine
+    "Antipsychotic",
+    "Antipsychotic",
+    "Antipsychotic",
+    "Antipsychotic",
+    "Antipsychotic",
+    "Other"              # Rivastigmine (exclude later)
+  )
+)
+
+pod_switches_class <- pod_switches %>%
+  filter(is_switch) %>%
+  left_join(
+    med_class_map,
+    by = c("prev_medication" = "medication")
+  ) %>%
+  rename(prev_class = med_class) %>%
+  left_join(
+    med_class_map,
+    by = c("medication" = "medication")
+  ) %>%
+  rename(curr_class = med_class) %>%
+  filter(
+    prev_class %in% c("Sedative", "Antipsychotic"),
+    curr_class %in% c("Sedative", "Antipsychotic")
+  )
+
+pod_switches_class <- pod_switches_class %>%
+  mutate(
+    switch_class = case_when(
+      prev_class == "Sedative" & curr_class == "Antipsychotic" ~
+        "Sedative → Antipsychotic",
+      prev_class == "Antipsychotic" & curr_class == "Sedative" ~
+        "Antipsychotic → Sedative",
+      prev_class == "Antipsychotic" & curr_class == "Antipsychotic" ~
+        "Antipsychotic → Antipsychotic",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  filter(!is.na(switch_class))
+
+switch_patient_level <- pod_switches_class %>%
+  group_by(subject_id, cluster, switch_class) %>%
+  summarise(any_switch = TRUE, .groups = "drop")
+
+switch_heatmap_data <- switch_patient_level %>%
+  group_by(cluster) %>%
+  mutate(
+    n_switchers = n_distinct(subject_id)
+  ) %>%
+  ungroup() %>%
+  group_by(cluster, switch_class, n_switchers) %>%
+  summarise(
+    percent = 100 * n() / n_switchers,
+    .groups = "drop"
+  )
+
+medication_switch_heatmap <- ggplot(
+  switch_heatmap_data,
+  aes(
+    x = factor(cluster),
+    y = switch_class,
+    fill = percent
+  )
+) +
+  geom_tile(color = "white", linewidth = 0.4) +
+  geom_text(
+  aes(label = sprintf("%.1f%%", percent)),
+  size  = 3.5,
+  color = "white",
+  fontface = "bold"
+)+
+  scale_fill_viridis_c(
+    option = "viridis",
+    name = "% of switching patients",
+    limits = c(0, 100)
+  ) +
+  coord_fixed() +
+  labs(
+    x = "Cluster",
+    y = "Medication switch class"
+  ) +
+  theme_nature +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(angle = 0, vjust = 0.5)
+  )+
+  theme(
+    panel.grid = element_blank(),
+
+    # Shrink side labels
+    axis.text.x  = element_text(size = 8),
+    axis.text.y  = element_text(size = 8),
+    axis.title.x = element_text(size = 8),
+    axis.title.y = element_text(size = 8),
+
+    # Legend smaller
+    legend.title = element_text(size = 8),
+    legend.text  = element_text(size = 7),
+
+    # Pull plot outward
+    plot.margin = margin(
+      t = 6, r = 6, b = 6, l = 6, unit = "pt"
+    )
+  )
+
+medication_switch_heatmap
+
+ggsave(
+  "figures/main/01_POD/pod_medication_switch_class_among_switching_patients_heatmap.png",
+  medication_switch_heatmap,
+  width  = 7,
+  height = 3.6,
+  dpi    = 300,
+  bg     = "white",
+  device = ragg::agg_png)
+```
+
+## Medication Type Switches (Table)
+
+```{r, echo=FALSE, message=FALSE}
+med_class_map <- tibble(
+  medication = c(
+    "Dexmedetomidine",
+    "Quetiapine",
+    "Haloperidol",
+    "Olanzapine",
+    "Risperidone",
+    "Chlorpromazine",
+    "Rivastigmine"
+  ),
+  med_class = c(
+    "Sedative",          # Dexmedetomidine
+    "Antipsychotic",
+    "Antipsychotic",
+    "Antipsychotic",
+    "Antipsychotic",
+    "Antipsychotic",
+    "Other"              # Rivastigmine (exclude later)
+  )
+)
+
+pod_switches_class <- pod_switches %>%
+  filter(is_switch) %>%
+  left_join(
+    med_class_map,
+    by = c("prev_medication" = "medication")
+  ) %>%
+  rename(prev_class = med_class) %>%
+  left_join(
+    med_class_map,
+    by = c("medication" = "medication")
+  ) %>%
+  rename(curr_class = med_class) %>%
+  filter(
+    prev_class %in% c("Sedative", "Antipsychotic"),
+    curr_class %in% c("Sedative", "Antipsychotic")
+  )
+
+pod_switches_class <- pod_switches_class %>%
+  mutate(
+    switch_class = case_when(
+      prev_class == "Sedative" & curr_class == "Antipsychotic" ~
+        "Sedative → Antipsychotic",
+      prev_class == "Antipsychotic" & curr_class == "Sedative" ~
+        "Antipsychotic → Sedative",
+      prev_class == "Antipsychotic" & curr_class == "Antipsychotic" ~
+        "Antipsychotic → Antipsychotic",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  filter(!is.na(switch_class))
+
+switch_patient_level <- pod_switches_class %>%
+  group_by(subject_id, cluster, switch_class) %>%
+  summarise(any_switch = TRUE, .groups = "drop")
+
+switch_summary <- switch_patient_level %>%
+  group_by(cluster) %>%
+  mutate(n_switchers = n_distinct(subject_id)) %>%
+  ungroup() %>%
+  group_by(cluster, switch_class) %>%
+  summarise(
+    n = n_distinct(subject_id),
+    n_switchers = first(n_switchers),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    pct = 100 * n / n_switchers,
+    value = sprintf("%d (%.1f%%)", n, pct)
+  )
+
+switch_table <- switch_summary %>%
+  select(cluster, switch_class, value) %>%
+  pivot_wider(
+    names_from = switch_class,
+    values_from = value,
+    values_fill = "0 (0.0%)"
+  ) %>%
+  arrange(cluster)
+
+# Rebame columns 
+colnames(switch_table) <- c("Cluster", 
+                            "Antipsychotic → Antipsychotic",
+                            "Antipsychotic → Sedative",
+                            "Sedative → Antipsychotic")
+
+# Rearrange the column order
+switch_table <- switch_table %>% select(Cluster, `Sedative → Antipsychotic`, `Antipsychotic → Sedative`, `Antipsychotic → Antipsychotic`)
+
+# Ensure named vector for colors
+cluster_color_map <- cluster_colors[2:5]
+names(cluster_color_map) <- c(2,3,4,5)
+
+cluster_switch_table_kable <- switch_table %>%
+  kable(
+    format = "html",
+    escape = FALSE,
+    align = "lccc"
+  ) %>%
+  kable_styling(
+    full_width = FALSE,
+    bootstrap_options = NULL,
+    font_size = 14
+  ) %>%
+
+  # Fix column widths (this enables wrapping)
+  column_spec(1, width = "1.5cm") %>%   # Cluster
+  column_spec(2, width = "3.5cm") %>% 
+  column_spec(3, width = "3.5cm") %>%
+  column_spec(4, width = "3.5cm") %>%  
+  column_spec(
+    1,
+    bold = TRUE,
+    background = cluster_color_map[cluster_summary$Cluster],
+    color = "black"
+  )
+
+cluster_switch_table_kable
+
+# Save table as a PNG
+save_kable(
+  cluster_switch_table_kable,
+  file = "figures/main/01_POD/pod_medication_switch_class_among_switching_patients_table.png",
+  zoom = 2
+)
+```
+
+## Sedative vs. Antipsychotic Percentages by Cluster 
+
+```{r, echo=FALSE, message=FALSE}
+
+pod_medications_filtered <- pod_medications_filtered %>% mutate(drug_class = case_when(medication == "Dexmedetomidine" ~ "Sedative", medication %in% c("Quetiapine", "Haloperidol", "Olanzapine", "Risperidone", "Chlorpromazine") ~ "Antipsychotic", TRUE ~ "Other"))
+
+gender_summary <- pod_study_cohort_features %>%
+  count(cluster, gender, name = "n_patients") %>%
+  group_by(cluster) %>%
+  mutate(
+    percent = 100 * n_patients / sum(n_patients)
+  ) %>%
+  ungroup()
+
+# Collapse to patient level exposure 
+patient_class_exposure <- pod_medications_filtered %>%
+  filter(drug_class %in% c("Antipsychotic", "Sedative")) %>%
+  distinct(subject_id, cluster, drug_class)
+
+cluster_totals <- pod_study_cohort_features %>%
+  distinct(subject_id, cluster) %>%
+  count(cluster, name = "n_cluster")
+
+# Compute percentages of patients in each cluster
+class_summary <- patient_class_exposure %>%
+  count(cluster, drug_class, name = "n_patients") %>%
+  left_join(cluster_totals, by = "cluster") %>%
+  mutate(
+    percent = 100 * n_patients / n_cluster
+  )
+
+# Create bar plot for percentage of patients in each cluster who receive >= 1 antipsychotic and >= 1 sedative drug 
+med_class_plot <- ggplot(
+  class_summary,
+  aes(
+    x = factor(cluster),
+    y = percent,
+    fill = drug_class
+  )
+) +
+  geom_col(
+    position = position_dodge(width = 0.9),
+    width = 0.55
+  ) +
+  geom_text(
+    aes(
+      label = paste0(
+        sprintf("%.1f%%", percent),
+        "\n(n=", n_patients, ")"
+      )
+    ),
+    position = position_dodge(width = 0.9),
+    vjust = -0.4,
+    size = 2.65,
+    lineheight = 0.9
+  ) +
+scale_fill_manual(
+  values = c(
+    "Antipsychotic" = "#1D3557", 
+    "Sedative"      = "#F0E442"   
+  )
+)+
+  scale_y_continuous(
+    limits = c(0, 100),
+    expand = expansion(mult = c(0, 0.15))
+  ) +
+  labs(
+    x = "Cluster",
+    y = "Percentage of patients",
+    fill = "Medication class"
+  ) +
+  theme_nature
+
+med_class_plot
+
+ggsave(
+  "figures/main/01_POD/pod_sedative_vs_antipsychotic_bar_plot.png",
+  med_class_plot,
+  width  = 7.0,
+  height = 4.5,
+  dpi    = 300,
+  bg     = "white"
+)
+```
+
+## Drug Administrations Before/After Delirium Onset
+
+```{r, echo=FALSE, message=FALSE}
+
+# Classify medications as before vs. after onset
+pod_timing <- pod_medications_filtered %>%
+  mutate(
+    timing = factor(
+      case_when(
+        starttime < first_cam_positive_time  ~ "Before delirium onset",
+        starttime >= first_cam_positive_time ~ "After delirium onset"
+      ),
+      levels = c(
+        "Before delirium onset",
+        "After delirium onset")))
+
+# Compute percentages within each cluster
+timing_summary <- pod_timing %>%
+  count(cluster, timing, name = "n_admin") %>%
+  group_by(cluster) %>%
+  mutate(
+    percent = 100 * n_admin / sum(n_admin)
+  ) %>%
+  ungroup()
+
+# Create bar plot
+admin_timing_plot <- ggplot(
+  timing_summary,
+  aes(
+    x = factor(cluster),
+    y = percent,
+    fill = timing
+  )
+) +
+  geom_col(
+    position = position_dodge(width = 0.9),
+    width = 0.6
+  ) +
+  geom_text(
+    aes(label = sprintf("%.1f%%", percent)),
+    position = position_dodge(width = 0.9),
+    vjust = -0.4,
+    size = 2.8
+  ) +
+  scale_fill_manual(
+  values = c(
+    "Before delirium onset" = "#1D3557", 
+    "After delirium onset"      = "#F0E442"   
+  )
+)+
+  scale_y_continuous(
+    limits = c(0, 100),
+    expand = expansion(mult = c(0, 0.08))
+  ) +
+  labs(
+    x = "Cluster",
+    y = "Percentage of medication administrations",
+    fill = ""
+  ) +
+  theme_nature
+
+admin_timing_plot
+
+ggsave(
+  "figures/main/01_POD/pod_medication_admin_timing_bar_plot.png",
+  admin_timing_plot,
+  width  = 7.0,
+  height = 4.5,
+  dpi    = 300,
+  bg     = "white")
+```
+
+## Dexmedetomidine Dose Analysis (Entire ICU Stay)
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Note: Dexmedetomidine has units of mg and mcg 
+
+# Dexmedetomidine exposure bar plot (compute the cumulative dose per patients exposed and normalize by length of ICU stay)
+dexmed <- pod_medications_filtered %>%
+  filter(medication == "Dexmedetomidine") %>%
+  mutate(
+    amount_mcg = case_when(
+      units == "mcg" ~ amount,
+      units == "mg"  ~ amount * 1000,
+      TRUE ~ NA_real_
+    )
+  ) %>%
+  filter(!is.na(amount_mcg))
+
+dexmed_patient <- dexmed %>%
+  group_by(subject_id, cluster, los_days) %>%
+  summarise(
+    cumulative_dose_mcg = sum(amount_mcg),
+    dose_per_day_mcg    = cumulative_dose_mcg / los_days,
+    .groups = "drop"
+  )
+
+dexmed_cluster_summary <- dexmed_patient %>%
+  group_by(cluster) %>%
+  summarise(
+    mean_dose_per_day = mean(dose_per_day_mcg),
+    sd_dose_per_day   = sd(dose_per_day_mcg),
+    n_patients        = n(),
+    .groups = "drop"
+  )
+
+# Bar plot
+ggplot(
+  dexmed_cluster_summary,
+  aes(
+    x = factor(cluster),
+    y = mean_dose_per_day,
+    fill = factor(cluster)
+  )
+) +
+  geom_col(width = 0.7) +
+  geom_errorbar(
+    aes(
+      ymin = mean_dose_per_day - sd_dose_per_day / sqrt(n_patients),
+      ymax = mean_dose_per_day + sd_dose_per_day / sqrt(n_patients)
+    ),
+    width = 0.2
+  ) +
+  geom_text(
+  aes(
+    y = mean_dose_per_day + sd_dose_per_day / sqrt(n_patients),
+    label = sprintf("%.1f", mean_dose_per_day)
+  ),
+  vjust = -0.7,
+  size = 3.5
+)+
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.1))
+  ) +
+  scale_fill_manual(values = cluster_colors, guide = "none") +
+  labs(
+    x = "Cluster",
+    y = "Mean dexmedetomidine dose (mcg/day)",
+    title = "Dexmedetomidine mean daily doses",
+    subtitle = "Only treated patients included"
+  ) +
+  theme_nature
+```
+
+## Quetiapine Dose Analysis (Entire ICU Stay)
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Note: Quetiapine only has units of mg 
+
+# Quetiapine dose bar plot (compute the cumulative dose per patients exposed and normalize by length of ICU stay)
+quetiapine <- pod_medications_filtered %>%
+  filter(medication == "Quetiapine")
+
+quetiapine_patient <- quetiapine %>%
+  group_by(subject_id, cluster, los_days) %>%
+  summarise(
+    cumulative_dose_mg = sum(amount),
+    dose_per_day_mg    = cumulative_dose_mg / los_days,
+    .groups = "drop"
+  )
+
+quetiapine_cluster_summary <- quetiapine_patient %>%
+  group_by(cluster) %>%
+  summarise(
+    mean_dose_per_day = mean(dose_per_day_mg),
+    sd_dose_per_day   = sd(dose_per_day_mg),
+    n_patients        = n(),
+    .groups = "drop"
+  )
+
+# Bar plot
+ggplot(
+  quetiapine_cluster_summary,
+  aes(
+    x = factor(cluster),
+    y = mean_dose_per_day,
+    fill = factor(cluster)
+  )
+) +
+  geom_col(width = 0.7) +
+  geom_errorbar(
+    aes(
+      ymin = mean_dose_per_day - sd_dose_per_day / sqrt(n_patients),
+      ymax = mean_dose_per_day + sd_dose_per_day / sqrt(n_patients)
+    ),
+    width = 0.2
+  ) +
+geom_text(
+  aes(
+    y = mean_dose_per_day + sd_dose_per_day / sqrt(n_patients),
+    label = sprintf("%.1f", mean_dose_per_day)
+  ),
+  vjust = -0.7,
+  size = 3.5
+)+
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.1))
+  ) +
+  scale_fill_manual(values = cluster_colors, guide = "none") +
+  labs(
+    x = "Cluster",
+    y = "Mean quetiapine dose (mg/day)",
+    title = "Quetiapine mean daily doses",
+    subtitle = "Only treated patients included"
+  ) +
+  theme_nature
+```
+
+## Haloperidol Dose Analysis (Entire ICU Stay)
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Note: Haloperidol only has units of mg 
+
+# Haloperidol dose bar plot (compute the cumulative dose per patients exposed and normalize by length of ICU stay)
+haloperidol <- pod_medications_filtered %>%
+  filter(medication == "Haloperidol")
+
+haloperidol_patient <- haloperidol %>%
+  group_by(subject_id, cluster, los_days) %>%
+  summarise(
+    cumulative_dose_mg = sum(amount),
+    dose_per_day_mg    = cumulative_dose_mg / los_days,
+    .groups = "drop"
+  )
+
+haloperidol_cluster_summary <- haloperidol_patient %>%
+  group_by(cluster) %>%
+  summarise(
+    mean_dose_per_day = mean(dose_per_day_mg),
+    sd_dose_per_day   = sd(dose_per_day_mg),
+    n_patients        = n(),
+    .groups = "drop"
+  )
+
+# Bar plot
+ggplot(
+  haloperidol_cluster_summary,
+  aes(
+    x = factor(cluster),
+    y = mean_dose_per_day,
+    fill = factor(cluster)
+  )
+) +
+  geom_col(width = 0.7) +
+  geom_errorbar(
+    aes(
+      ymin = mean_dose_per_day - sd_dose_per_day / sqrt(n_patients),
+      ymax = mean_dose_per_day + sd_dose_per_day / sqrt(n_patients)
+    ),
+    width = 0.2
+  ) +
+geom_text(
+  aes(
+    y = mean_dose_per_day + sd_dose_per_day / sqrt(n_patients),
+    label = sprintf("%.1f", mean_dose_per_day)
+  ),
+  vjust = -0.7,
+  size = 3.5
+)+
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.1))
+  ) +
+  scale_fill_manual(values = cluster_colors, guide = "none") +
+  labs(
+    x = "Cluster",
+    y = "Mean haloperidol dose (mg/day)",
+    title = "Haloperidol mean daily doses",
+    subtitle = "Only treated patients included"
+  ) +
+  theme_nature
+```
+
+## Dexmedetomidine Dose Analysis (Between first positive CAM-ICU and delirium resolution)
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Note: Dexmedetomidine has units of mg and mcg 
+
+# Dexmedetomidine exposure bar plot (compute the cumulative dose per patients exposed and normalize by length of ICU stay)
+dexmed <- pod_medications_filtered %>%
+  filter(medication == "Dexmedetomidine") %>%
+  filter(starttime >= first_cam_positive_time & starttime <= delirium_endtime) %>%
+  mutate(
+    amount_mcg = case_when(
+      units == "mcg" ~ amount,
+      units == "mg"  ~ amount * 1000,
+      TRUE ~ NA_real_
+    )
+  ) %>%
+  filter(!is.na(amount_mcg))
+
+dexmed_patient <- dexmed %>%
+  group_by(subject_id, cluster, pod_resolution_days) %>%
+  summarise(
+    cumulative_dose_mcg = sum(amount_mcg),
+    dose_per_day_mcg    = cumulative_dose_mcg / pod_resolution_days,
+    .groups = "drop"
+  )
+
+dexmed_cluster_summary <- dexmed_patient %>%
+  group_by(cluster) %>%
+  summarise(
+    mean_dose_per_day = mean(dose_per_day_mcg),
+    sd_dose_per_day   = sd(dose_per_day_mcg),
+    n_patients        = n(),
+    .groups = "drop"
+  )
+
+# Bar plot
+dexmed_dose_plot <- ggplot(
+  dexmed_cluster_summary,
+  aes(
+    x = factor(cluster),
+    y = mean_dose_per_day,
+    fill = factor(cluster)
+  )
+) +
+  geom_col(width = 0.7) +
+  geom_errorbar(
+    aes(
+      ymin = mean_dose_per_day - sd_dose_per_day / sqrt(n_patients),
+      ymax = mean_dose_per_day + sd_dose_per_day / sqrt(n_patients)
+    ),
+    width = 0.2
+  ) +
+geom_text(
+  aes(
+    y = mean_dose_per_day + sd_dose_per_day / sqrt(n_patients),
+    label = sprintf("%.1f", mean_dose_per_day)
+  ),
+  vjust = -0.7,
+  size = 3.5
+)+
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.15))
+  ) +
+  scale_fill_manual(values = cluster_colors, guide = "none") +
+  labs(
+    x = "Cluster",
+    y = "Mean cumulative dexmedetomidine dose (mcg/day)",
+    #title = "Dexmedetomidine mean daily doses during delirium",
+    #subtitle = "Only treated patients included"
+  ) +
+  theme_nature
+
+dexmed_dose_plot
+
+ggsave(
+  "figures/main/01_POD/pod_mean_cumulative_daily_dexmedetomidine_dose_during_delirium_bar_plot.png",
+  dexmed_dose_plot,
+  width  = 7.0,
+  height = 4.5,
+  dpi    = 300,
+  bg     = "white")
+```
+
+## Quetiapine Dose Analysis (Between first positive CAM-ICU and delirium resolution)
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Note: Quetiapine only has units of mg 
+
+# Quetiapine dose bar plot (compute the cumulative dose per patients exposed and normalize by length of ICU stay)
+quetiapine <- pod_medications_filtered %>%
+  filter(medication == "Quetiapine") %>%
+  filter(starttime >= first_cam_positive_time & starttime <= delirium_endtime)
+
+quetiapine_patient <- quetiapine %>%
+  group_by(subject_id, cluster, pod_resolution_days) %>%
+  summarise(
+    cumulative_dose_mg = sum(amount),
+    dose_per_day_mg    = cumulative_dose_mg / pod_resolution_days,
+    .groups = "drop"
+  )
+
+quetiapine_cluster_summary <- quetiapine_patient %>%
+  group_by(cluster) %>%
+  summarise(
+    mean_dose_per_day = mean(dose_per_day_mg),
+    sd_dose_per_day   = sd(dose_per_day_mg),
+    n_patients        = n(),
+    .groups = "drop"
+  )
+
+# Bar plot
+quetiapine_dose_plot <- ggplot(
+  quetiapine_cluster_summary,
+  aes(
+    x = factor(cluster),
+    y = mean_dose_per_day,
+    fill = factor(cluster)
+  )
+) +
+  geom_col(width = 0.7) +
+  geom_errorbar(
+    aes(
+      ymin = mean_dose_per_day - sd_dose_per_day / sqrt(n_patients),
+      ymax = mean_dose_per_day + sd_dose_per_day / sqrt(n_patients)
+    ),
+    width = 0.2
+  ) +
+geom_text(
+  aes(
+    y = mean_dose_per_day + sd_dose_per_day / sqrt(n_patients),
+    label = sprintf("%.1f", mean_dose_per_day)
+  ),
+  vjust = -0.7,
+  size = 3.5
+)+
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.1))
+  ) +
+  scale_fill_manual(values = cluster_colors, guide = "none") +
+  labs(
+    x = "Cluster",
+    y = "Mean cumulative quetiapine dose (mg/day)",
+    #title = "Quetiapine mean daily doses during delirium",
+    #subtitle = "Only treated patients included"
+  ) +
+  theme_nature
+
+quetiapine_dose_plot
+
+ggsave(
+  "figures/main/01_POD/pod_mean_cumulative_daily_quetiapine_dose_during_delirium_bar_plot.png",
+  quetiapine_dose_plot,
+  width  = 7.0,
+  height = 4.5,
+  dpi    = 300,
+  bg     = "white")
+```
+
+## Haloperidol Dose Analysis (Between first positive CAM-ICU and delirium resolution)
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Note: Haloperidol only has units of mg 
+
+# Haloperidol dose bar plot (compute the cumulative dose per patients exposed and normalize by length of ICU stay)
+haloperidol <- pod_medications_filtered %>%
+  filter(medication == "Haloperidol") %>%
+  filter(starttime >= first_cam_positive_time & starttime <= delirium_endtime)
+
+haloperidol_patient <- haloperidol %>%
+  group_by(subject_id, cluster, pod_resolution_days) %>%
+  summarise(
+    cumulative_dose_mg = sum(amount),
+    dose_per_day_mg    = cumulative_dose_mg / pod_resolution_days,
+    .groups = "drop"
+  )
+
+haloperidol_cluster_summary <- haloperidol_patient %>%
+  group_by(cluster) %>%
+  summarise(
+    mean_dose_per_day = mean(dose_per_day_mg),
+    sd_dose_per_day   = sd(dose_per_day_mg),
+    n_patients        = n(),
+    .groups = "drop"
+  )
+
+# Bar plot
+haloperidol_dose_plot <- ggplot(
+  haloperidol_cluster_summary,
+  aes(
+    x = factor(cluster),
+    y = mean_dose_per_day,
+    fill = factor(cluster)
+  )
+) +
+  geom_col(width = 0.7) +
+  geom_errorbar(
+    aes(
+      ymin = mean_dose_per_day - sd_dose_per_day / sqrt(n_patients),
+      ymax = mean_dose_per_day + sd_dose_per_day / sqrt(n_patients)
+    ),
+    width = 0.2
+  ) +
+geom_text(
+  aes(
+    y = mean_dose_per_day + sd_dose_per_day / sqrt(n_patients),
+    label = sprintf("%.1f", mean_dose_per_day)
+  ),
+  vjust = -0.7,
+  size = 3.5
+)+
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.1))
+  ) +
+  scale_fill_manual(values = cluster_colors, guide = "none") +
+  labs(
+    x = "Cluster",
+    y = "Mean cumulative haloperidol dose (mg/day)",
+    #title = "Haloperidol mean daily doses during delirium",
+    #subtitle = "Only treated patients included"
+  ) +
+  theme_nature
+
+haloperidol_dose_plot
+
+ggsave(
+  "figures/main/01_POD/pod_mean_cumulative_daily_haloperidol_dose_during_delirium_bar_plot.png",
+  haloperidol_dose_plot,
+  width  = 7.0,
+  height = 4.5,
+  dpi    = 300,
+  bg     = "white")
+```
+
+# Demographics and Clinical Risk Factors
+
+## Age
+
+```{r, echo=FALSE, message=FALSE}
+age_summary <- pod_study_cohort_features %>%
+  group_by(cluster) %>%
+  summarise(
+    mean_age = mean(age),
+    sd_age   = sd(age),
+    n_patients      = n(),
+    .groups = "drop"
+  )
+
+ggplot(
+  age_summary,
+  aes(
+    x = factor(cluster),
+    y = mean_age,
+    fill = factor(cluster)
+  )
+) +
+  geom_col(width = 0.7) +
+  geom_errorbar(
+    aes(
+      ymin = mean_age - sd_age / sqrt(n_patients),
+      ymax = mean_age + sd_age / sqrt(n_patients)
+    ),
+    width = 0.2
+  ) +
+geom_text(
+  aes(
+    y = mean_age + sd_age / sqrt(n_patients),
+    label = sprintf("%.1f", mean_age)
+  ),
+  vjust = -0.7,
+  size = 3.5
+)+
+  scale_fill_manual(values = cluster_colors, guide = "none") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.2))) +
+  labs(
+    x = "Cluster",
+    y = "Mean age (years)",
+  ) +
+  theme_nature
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(
+  pod_study_cohort_features,
+  aes(x = age, fill = factor(cluster))
+) +
+  geom_histogram(bins = 12, alpha = 0.8, color = "white") +
+  facet_wrap(~ cluster, scales = "free_y") +
+  scale_fill_manual(values = cluster_colors, guide = "none") +
+  labs(
+    x = "Age (years)",
+    y = "Number of patients"
+  ) +
+  theme_nature
+```
+
+## Gender
+
+```{r, echo=FALSE, message=FALSE}
+gender_summary <- pod_study_cohort_features %>%
+  count(cluster, gender, name = "n_patients") %>%
+  group_by(cluster) %>%
+  mutate(
+    percent = 100 * n_patients / sum(n_patients)
+  ) %>%
+  ungroup()
+
+gender_plot <- ggplot(
+  gender_summary,
+  aes(
+    x = factor(cluster),
+    y = percent,
+    fill = gender
+  )
+) +
+  geom_col(
+    position = position_dodge(width = 0.9),
+    width = 0.55
+  ) +
+geom_text(
+  aes(
+    label = paste0(
+      sprintf("%.1f%%", percent),
+      "\n(n=", n_patients, ")"
+    )
+  ),
+  position = position_dodge(width = 0.9),
+  vjust = -0.4,
+  size = 2.65,
+  lineheight = 0.9
+) +
+    scale_fill_manual(
+  values = c(
+    "Female" = "#1D3557", 
+    "Male"      = "#F0E442"   
+  )
+)+
+  scale_y_continuous(
+    limits = c(0, 100),
+    expand = expansion(mult = c(0, 0.01))
+  ) +
+  labs(
+    x = "Cluster",
+    y = "Percentage of patients",
+    fill = "Gender"
+  ) +
+  theme_nature
+
+gender_plot
+
+ggsave(
+  "figures/main/01_POD/pod_gender_bar_plot.png",
+  gender_plot,
+  width  = 7.0,
+  height = 4.5,
+  dpi    = 300,
+  bg     = "white"
+)
+```
+
+## Alcohol use disorder 
+
+```{r, echo=FALSE, message=FALSE}
+alcohol_use_disorder_summary <- pod_study_cohort_features %>%
+  count(cluster, alcohol_use_disorder, name = "n_patients") %>%
+  group_by(cluster) %>%
+  mutate(
+    percent = 100 * n_patients / sum(n_patients)
+  ) %>%
+  ungroup()
+
+alcohol_use_disorder_plot <- ggplot(
+  alcohol_use_disorder_summary,
+  aes(
+    x = factor(cluster),
+    y = percent,
+    fill = alcohol_use_disorder
+  )
+) +
+  geom_col(
+    position = position_dodge(width = 0.9),
+    width = 0.6
+  ) +
+geom_text(
+  aes(
+    label = paste0(
+      sprintf("%.1f%%", percent),
+      "\n(n=", n_patients, ")"
+    )
+  ),
+  position = position_dodge(width = 0.9),
+  vjust = -0.4,
+  size = 2.6,
+  lineheight = 0.9
+) +
+  scale_y_continuous(
+    limits = c(0, 100),
+    expand = expansion(mult = c(0, 0.15))
+  ) +
+    scale_fill_manual(
+  values = c(
+    "No" = "#1D3557", 
+    "Yes"      = "#F0E442"   
+  )
+)+
+  labs(
+    x = "Cluster",
+    y = "Percentage of patients",
+    fill = "Alcohol use disorder"
+  ) +
+  theme_nature
+
+alcohol_use_disorder_plot
+
+ggsave(
+  "figures/main/01_POD/pod_alcohol_use_disorder_bar_plot.png",
+  alcohol_use_disorder_plot,
+  width  = 7.0,
+  height = 4.5,
+  dpi    = 300,
+  bg     = "white"
+)
+```
+
+## Mechanical Ventilator Use
+
+```{r, echo=FALSE, message=FALSE}
+ventilator_use_summary <- pod_study_cohort_features %>%
+  count(cluster, ventilator_use, name = "n_patients") %>%
+  group_by(cluster) %>%
+  mutate(
+    percent = 100 * n_patients / sum(n_patients)
+  ) %>%
+  ungroup()
+
+ventilator_use_plot <- ggplot(
+  ventilator_use_summary,
+  aes(
+    x = factor(cluster),
+    y = percent,
+    fill = ventilator_use
+  )
+) +
+  geom_col(
+    position = position_dodge(width = 0.9),
+    width = 0.55
+  ) +
+geom_text(
+  aes(
+    label = paste0(
+      sprintf("%.1f%%", percent),
+      "\n(n=", n_patients, ")"
+    )
+  ),
+  position = position_dodge(width = 0.9),
+  vjust = -0.4,
+  size = 2.6,
+  lineheight = 0.9
+) +
+    scale_fill_manual(
+  values = c(
+    "No" = "#1D3557", 
+    "Yes"      = "#F0E442"   
+  )
+)+
+  scale_y_continuous(
+    limits = c(0, 100),
+    expand = expansion(mult = c(0, 0.01))
+  ) +
+  labs(
+    x = "Cluster",
+    y = "Percentage of patients",
+    fill = "Ventilator use"
+  ) +
+  theme_nature
+
+ventilator_use_plot
+
+ggsave(
+  "figures/main/01_POD/pod_ventilator_use_bar_plot.png",
+  ventilator_use_plot,
+  width  = 7.0,
+  height = 4.5,
+  dpi    = 300,
+  bg     = "white"
+)
+```
+
+## Mechanical Ventilation Duration (among ventilated patients)
+
+```{r, echo=FALSE, message=FALSE}
+ventilated_patients <- pod_study_cohort_features %>%
+  filter(ventilation_duration_mins > 0)
+
+vent_summary <- ventilated_patients %>%
+  group_by(cluster) %>%
+  summarise(
+    mean_vent_days = mean(ventilation_duration_mins / (60*24), na.rm = TRUE),
+    sd_vent_days   = sd(ventilation_duration_mins / (60*24), na.rm = TRUE),
+    n_patients      = n(),
+    .groups = "drop"
+  )
+
+ventilation_duration_plot <- ggplot(
+  vent_summary,
+  aes(
+    x = factor(cluster),
+    y = mean_vent_days,
+    fill = factor(cluster)
+  )
+) +
+  geom_col(width = 0.7) +
+  geom_errorbar(
+    aes(
+      ymin = mean_vent_days - sd_vent_days / sqrt(n_patients),
+      ymax = mean_vent_days + sd_vent_days / sqrt(n_patients)
+    ),
+    width = 0.2
+  ) +
+geom_text(
+  aes(
+    y = mean_vent_days + sd_vent_days / sqrt(n_patients),
+    label = sprintf("%.1f", mean_vent_days)
+  ),
+  vjust = -0.7,
+  size = 3.5
+)+
+  scale_fill_manual(values = cluster_colors, guide = "none") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(
+    x = "Cluster",
+    y = "Mean ventilation duration (days)",
+    #title = "Mechanical ventilation duration",
+    #subtitle = "Only ventilated patients included"
+  ) +
+  theme_nature
+
+ventilation_duration_plot
+
+ggsave(
+  "figures/main/01_POD/pod_ventilation_duration_bar_plot.png",
+  ventilation_duration_plot,
+  width  = 7.0,
+  height = 4.5,
+  dpi    = 300,
+  bg     = "white"
+)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(
+  ventilated_patients,
+  aes(x = ventilation_duration_mins / (60*24), fill = factor(cluster))
+) +
+  geom_histogram(bins = 30, alpha = 0.8, color = "white") +
+  facet_wrap(~ cluster, scales = "free_y") +
+  scale_fill_manual(values = cluster_colors, guide = "none") +
+  scale_x_continuous(limits = c(0, 30), labels = c(0, 10, 20, 30)) +
+  labs(
+    x = "Ventilation duration (days)",
+    y = "Number of patients"
+  ) +
+  theme_nature
+```
+
+
+
+# Health Outcomes 
+
+## Discharge Location 
+
+```{r, echo=FALSE, message=FALSE}
+# Group discharge locations into common categories 
+pod_discharge_location <- pod_study_cohort_features %>%
+  mutate(
+    discharge_location = case_when(
+      discharge_location %in% c("HOME", "HOME HEALTH CARE") ~ "Home/HHC",
+      discharge_location == "REHAB" ~ "Rehab",
+      discharge_location == "SKILLED NURSING FACILITY" ~ "SNF",
+      discharge_location == "CHRONIC/LONG TERM ACUTE CARE" ~ "LTACH",
+      discharge_location %in% c(
+        "PSYCH FACILITY", "OTHER FACILITY", "ASSISTED LIVING",
+        "AGAINST ADVICE", "ACUTE HOSPITAL"
+      ) ~ "Other",
+      discharge_location == "HOSPICE" ~ "Hospice",
+      discharge_location == "DIED" ~ "Died"
+    ),
+    discharge_location = factor(
+      discharge_location,
+      levels = c(
+        "Died",
+        "Hospice",
+        "Other",
+        "LTACH",
+        "SNF",
+        "Rehab",
+        "Home/HHC"
+      ),
+      ordered = TRUE
+    )
+  )
+
+discharge_pct <- pod_discharge_location %>%
+  mutate(
+    cluster = factor(cluster),
+    discharge_location = factor(discharge_location)
+  ) %>%
+  group_by(cluster, discharge_location) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(cluster) %>%
+  mutate(
+    pct = 100 * n / sum(n)
+  )
+
+discharge_locations_plot <- ggplot(
+  discharge_pct,
+  aes(x = discharge_location, y = pct, fill = cluster)
+) +
+  geom_col(width = 0.8) +
+  facet_wrap(
+  ~ cluster,
+  labeller = labeller(cluster = function(x) paste("Cluster", x))
+) +
+  scale_fill_manual(values = cluster_colors, guide = "none") +
+  scale_y_continuous(
+    #labels = function(x) paste0(x, "%"),
+    expand = expansion(mult = c(0, 0.2))
+  ) +
+  labs(
+    x = "Discharge location",
+    y = "Percentage of patients"
+  ) +
+  geom_text(
+  aes(
+    label = paste0(
+      sprintf("%.1f%%", pct)),
+    y = pct
+  ),
+  hjust = -0.05,
+  size = 2.4
+) +
+  coord_flip() + theme_nature
+
+discharge_locations_plot 
+
+ggsave(
+  "figures/main/01_POD/pod_discharge_locations_bar_plot.png",
+  discharge_locations_plot,
+  width  = 9,
+  height = 4,
+  dpi    = 300,
+  bg     = "white")
+```
+
+## RASS Scores (At time of first positive CAM-ICU assessment)
+
+```{r, echo=FALSE, message=FALSE}
+# RASS Scores 
+rass_pct <- rass_scores_filtered %>%
+  filter(
+    label == "Richmond-RAS Scale",
+    charttime == first_cam_positive_time
+  ) %>%
+  mutate(
+    cluster  = factor(cluster),
+    valuenum = factor(valuenum, levels = -5:4)
+  ) %>%
+  group_by(cluster, valuenum) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(cluster) %>%
+  mutate(
+    pct = 100 * n / sum(n)
+  )
+
+rass_scores_plot <- ggplot(
+  rass_pct,
+  aes(x = valuenum, y = pct, fill = cluster)
+) +
+  geom_col(width = 0.8) +
+  facet_wrap(
+  ~ cluster,
+  labeller = labeller(cluster = function(x) paste("Cluster", x))
+) +
+  scale_fill_manual(values = cluster_colors, guide = "none") +
+  scale_y_continuous(
+    #labels = function(x) paste0(x, "%"),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    x = "RASS score",
+    y = "Percentage of patients"
+  ) +
+  geom_text(
+  aes(
+    label = paste0(
+      sprintf("%.0f%%", pct)),
+    y = pct
+  ),
+  vjust = -0.25,
+  size = 2.3
+) +
+  theme_nature
+
+rass_scores_plot
+
+ggsave(
+  "figures/main/01_POD/pod_rass_scores_first_cam_icu_bar_plot.png",
+  rass_scores_plot,
+  width  = 7.0,
+  height = 4.5,
+  dpi    = 300,
+  bg     = "white")
+```
+
+## RASS Scores (After delirium onset)
+
+```{r, echo=FALSE, message=FALSE}
+# RASS Scores after delirium onset 
+rass_pct <- rass_scores_filtered %>%
+  filter(
+    label == "Richmond-RAS Scale",
+    charttime >= first_cam_positive_time
+  ) %>%
+  mutate(
+    cluster  = factor(cluster),
+    valuenum = factor(valuenum, levels = -5:4)
+  ) %>%
+  group_by(cluster, valuenum) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(cluster) %>%
+  mutate(
+    pct = 100 * n / sum(n)
+  )
+
+rass_scores_plot <- ggplot(
+  rass_pct,
+  aes(x = valuenum, y = pct, fill = cluster)
+) +
+  geom_col(width = 0.8) +
+  facet_wrap(
+  ~ cluster,
+  labeller = labeller(cluster = function(x) paste("Cluster", x))
+) +
+  scale_fill_manual(values = cluster_colors, guide = "none") +
+  scale_y_continuous(
+    #labels = function(x) paste0(x, "%"),
+    expand = expansion(mult = c(0, 0.15))
+  ) +
+  labs(
+    x = "RASS score",
+    y = "Percentage of scores"
+  ) +
+  geom_text(
+  aes(
+    label = paste0(
+      sprintf("%.0f%%", pct)),
+    y = pct
+  ),
+  vjust = -0.25,
+  size = 2.3
+) +
+  theme_nature
+
+rass_scores_plot
+
+ggsave(
+  "figures/main/01_POD/pod_rass_scores_after_delirium_onset_bar_plot.png",
+  rass_scores_plot,
+  width  = 7.0,
+  height = 4.5,
+  dpi    = 300,
+  bg     = "white")
+```
+
+## RASS Scores (Between first positive CAM-ICU result and delirium resolution)
+
+```{r, echo=FALSE, message=FALSE}
+# RASS Scores after delirium onset 
+rass_pct <- rass_scores_filtered %>%
+  filter(
+    label == "Richmond-RAS Scale",
+    charttime >= first_cam_positive_time & charttime <= delirium_endtime
+  ) %>%
+  mutate(
+    cluster  = factor(cluster),
+    valuenum = factor(valuenum, levels = -5:4)
+  ) %>%
+  group_by(cluster, valuenum) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(cluster) %>%
+  mutate(
+    pct = 100 * n / sum(n)
+  )
+
+rass_scores_plot <- ggplot(
+  rass_pct,
+  aes(x = valuenum, y = pct, fill = cluster)
+) +
+  geom_col(width = 0.8) +
+  facet_wrap(
+  ~ cluster,
+  labeller = labeller(cluster = function(x) paste("Cluster", x))
+) +
+  scale_fill_manual(values = cluster_colors, guide = "none") +
+  scale_y_continuous(
+    #labels = function(x) paste0(x, "%"),
+    expand = expansion(mult = c(0, 0.15))
+  ) +
+  labs(
+    x = "RASS score",
+    y = "Percentage of scores"
+  ) +
+  geom_text(
+  aes(
+    label = paste0(
+      sprintf("%.0f%%", pct)),
+    y = pct
+  ),
+  vjust = -0.25,
+  size = 2.3
+) +
+  theme_nature
+
+rass_scores_plot
+
+ggsave(
+  "figures/main/01_POD/pod_rass_scores_during_delirium_bar_plot.png",
+  rass_scores_plot,
+  width  = 7.0,
+  height = 4.5,
+  dpi    = 300,
+  bg     = "white")
+```
+
+## POD Duration 
+
+```{r, echo=FALSE, message=FALSE}
+pod_duration_summary <- pod_study_cohort_features %>%
+  group_by(cluster) %>%
+  summarise(
+    mean_pod_duration_days = mean(pod_duration_days),
+    sd_pod_duration_days   = sd(pod_duration_days),
+    n_patients      = n(),
+    .groups = "drop"
+  )
+
+ggplot(
+  pod_duration_summary,
+  aes(
+    x = factor(cluster),
+    y = mean_pod_duration_days,
+    fill = factor(cluster)
+  )
+) +
+  geom_col(width = 0.7) +
+  geom_errorbar(
+    aes(
+      ymin = mean_pod_duration_days - sd_pod_duration_days / sqrt(n_patients),
+      ymax = mean_pod_duration_days + sd_pod_duration_days / sqrt(n_patients)
+    ),
+    width = 0.2
+  ) +
+geom_text(
+  aes(
+    y = mean_pod_duration_days + sd_pod_duration_days / sqrt(n_patients),
+    label = sprintf("%.1f", mean_pod_duration_days)
+  ),
+  vjust = -0.7,
+  size = 3.5
+)+
+  scale_fill_manual(values = cluster_colors, guide = "none") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.17))) +
+  labs(
+    x = "Cluster",
+    y = "Mean POD duration (days)",
+  ) + theme_nature
+```
+
+## POD Resolution Time Summary Statistics
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# KM-estimated median POD resolution times by cluster
+pod_study_cohort_features <- pod_study_cohort_features %>%
+  mutate(event = !censored)
+
+fit <- survfit(
+  Surv(pod_resolution_days, event) ~ cluster,
+  data = pod_study_cohort_features
+)
+
+kable(summary(fit)$table)
+
+# Examine death as a competing risk
+all_pod_study_cohort_features <- all_pod_study_cohort_features %>%
+  mutate(
+    death_before_resolution = case_when(
+      censored == TRUE & !is.na(deathtime) & deathtime <= icu_outtime ~ 1,
+      TRUE ~ 0
+    )
+  )
+
+died_before_resolution <- all_pod_study_cohort_features %>% filter(death_before_resolution == TRUE)
+
+sprintf("%s of patients died before POD resolution.", round(100*(nrow(died_before_resolution)/nrow(all_pod_study_cohort_features)),3))
+
+# Cluster-level summary of death as a competing risk
+pod_study_cohort_features <- pod_study_cohort_features %>%
+  mutate(
+    death_before_resolution = case_when(
+      censored == TRUE & !is.na(deathtime) & deathtime <= icu_outtime ~ 1,
+      TRUE ~ 0
+    )
+  )
+
+death_summary <- pod_study_cohort_features %>%
+  group_by(cluster) %>%
+  summarise(
+    n_total = n(),
+    n_death_before_resolution = sum(death_before_resolution),
+    percent_death_before_resolution = 100 * n_death_before_resolution / n_total,
+    .groups = "drop"
+  )
+
+death_vs_censored <- pod_study_cohort_features %>%
+  group_by(cluster) %>%
+  summarise(
+    n_censored = sum(censored),
+    n_death_before_resolution = sum(death_before_resolution),
+    percent_of_censored_due_to_death = 100 * n_death_before_resolution / n_censored,
+    .groups = "drop"
+  )
+
+kable(death_summary)
+kable(death_vs_censored)
+```
+
+## POD Resolution Time Kaplan-Meier Curve
+
+```{r, echo=FALSE, message=FALSE}
+# KM-curve with global log-rank test (with 95% confidence bands)
+
+updated_cluster_colors <- cluster_colors
+names(updated_cluster_colors) <- paste("Cluster", names(cluster_colors))
+
+surv_data <- pod_study_cohort_features %>%
+  mutate(
+    time    = pod_resolution_days,
+    event   = as.integer(!censored),  # 1 = resolved, 0 = censored
+    cluster = factor(
+      cluster,
+      labels = paste("Cluster", sort(unique(cluster)))
+    )
+  )
+
+
+km_fit <- survfit(
+  Surv(time, event) ~ cluster,
+  data = surv_data
+)
+
+km_df <- data.frame(
+  time    = km_fit$time,
+  surv    = km_fit$surv,
+  cluster = rep(names(km_fit$strata), km_fit$strata)
+) %>%
+  mutate(
+    cluster = str_remove(cluster, "^cluster=")
+  )
+
+logrank_test <- survdiff(
+  Surv(time, event) ~ cluster,
+  data = surv_data
+)
+
+# Extract p-value
+logrank_p <- 1 - pchisq(
+  logrank_test$chisq,
+  df = length(logrank_test$n) - 1
+)
+
+logrank_label <- ifelse(
+  logrank_p < 0.001,
+  "Log-rank p < 0.001",
+  paste0("Log-rank p = ", formatC(logrank_p, digits = 3, format = "f"))
+)
+
+km_curve <- ggplot(km_df, aes(x = time, y = surv, color = cluster)) +
+  geom_step(linewidth = 0.8) +
+  scale_y_continuous(
+    labels = scales::percent,
+    limits = c(0, 1)
+  ) +
+  scale_color_manual(values = updated_cluster_colors) +
+  annotate(
+    "text",
+    x = Inf,
+    y = Inf,
+    label = logrank_label,
+    hjust = 1.1,
+    vjust = 1.5,
+    size = 3.6
+  ) +
+  labs(
+    x = "Days since first positive CAM-ICU",
+    y = "Probability of unresolved delirium",
+    color = "Cluster"
+  ) +
+  theme_nature
+
+km_curve
+
+ggsave(
+  "figures/main/01_POD/pod_resolution_time_kaplan_meier_curve.png",
+  km_curve,
+  width  = 7.0,
+  height = 4.5,
+  dpi    = 300,
+  bg     = "white")
+```
+
+## POD Resolution Time Kaplan-Meier Curve (with confidence intervals)
+
+```{r, echo=FALSE, message=FALSE}
+# KM-curve with global log-rank test 
+
+updated_cluster_colors <- cluster_colors
+names(updated_cluster_colors) <- paste("Cluster", names(cluster_colors))
+
+surv_data <- pod_study_cohort_features %>%
+  mutate(
+    time    = pod_resolution_days,
+    event   = as.integer(!censored),  # 1 = resolved, 0 = censored
+    cluster = factor(
+      cluster,
+      labels = paste("Cluster", sort(unique(cluster)))
+    )
+  )
+
+
+km_fit <- survfit(
+  Surv(time, event) ~ cluster,
+  data = surv_data
+)
+
+km_df <- data.frame(
+  time    = km_fit$time,
+  surv    = km_fit$surv,
+  lower   = km_fit$lower,
+  upper   = km_fit$upper,
+  cluster = rep(names(km_fit$strata), km_fit$strata)
+) %>%
+  mutate(
+    cluster = str_remove(cluster, "^cluster=")
+  )
+
+logrank_test <- survdiff(
+  Surv(time, event) ~ cluster,
+  data = surv_data
+)
+
+# Extract p-value
+logrank_p <- 1 - pchisq(
+  logrank_test$chisq,
+  df = length(logrank_test$n) - 1
+)
+
+logrank_label <- ifelse(
+  logrank_p < 0.001,
+  "Log-rank p < 0.001",
+  paste0("Log-rank p = ", formatC(logrank_p, digits = 3, format = "f"))
+)
+
+km_curve <- ggplot(km_df, aes(x = time, y = surv, color = cluster)) +
+  geom_ribbon(
+    aes(ymin = lower, ymax = upper, fill = cluster),
+    alpha = 0.15,
+    color = NA
+  ) +
+  geom_step(linewidth = 0.8) +
+  scale_y_continuous(
+    labels = scales::percent,
+    limits = c(0, 1)
+  ) +
+  scale_color_manual(values = updated_cluster_colors) +
+  scale_fill_manual(values = updated_cluster_colors) +
+  annotate(
+    "text",
+    x = Inf,
+    y = Inf,
+    label = logrank_label,
+    hjust = 1.1,
+    vjust = 1.5,
+    size = 3.6
+  ) +
+  labs(
+    x = "Days since first positive CAM-ICU",
+    y = "Probability of unresolved delirium",
+    color = "Cluster",
+    fill = "Cluster"
+  ) +
+  theme_nature
+
+km_curve
+
+ggsave(
+  "figures/main/01_POD/pod_resolution_time_kaplan_meier_curve_with_confidence_intervals.png",
+  km_curve,
+  width  = 7.0,
+  height = 4.5,
+  dpi    = 300,
+  bg     = "white")
+```
+
+## Recurrent POD
+
+```{r, echo=FALSE, message=FALSE}
+recurrent_summary <- pod_study_cohort_features %>%
+  filter(recurrent %in% c("Yes", "No")) %>%   # safety check
+  count(cluster, recurrent, name = "n_patients") %>%
+  group_by(cluster) %>%
+  mutate(
+    percent = 100 * n_patients / sum(n_patients)
+  ) %>%
+  ungroup()
+
+recurrent_pod_plot <- ggplot(
+  recurrent_summary,
+  aes(
+    x = factor(cluster),
+    y = percent,
+    fill = recurrent
+  )
+) +
+  geom_col(
+    position = position_dodge(width = 0.9),
+    width = 0.5
+  ) +
+geom_text(
+  aes(
+    label = paste0(
+      sprintf("%.1f%%", percent),
+      "\n(n=", n_patients, ")"
+    )
+  ),
+  position = position_dodge(width = 0.9),
+  vjust = -0.4,
+  size = 2.4,
+  lineheight = 0.9
+) +
+    scale_fill_manual(
+  values = c(
+    "No" = "#1D3557", 
+    "Yes"      = "#F0E442"   
+  )
+)+
+  scale_y_continuous(
+    limits = c(0, 100),
+    expand = expansion(mult = c(0, 0.01))
+  ) +
+  labs(
+    x = "Cluster",
+    y = "Percentage of patients",
+    fill = "Recurrent delirium"
+  ) + theme_nature
+
+recurrent_pod_plot
+
+ggsave(
+  "figures/main/01_POD/pod_recurrent_vs_nonrecurrent_bar_plot.png",
+  recurrent_pod_plot,
+  width  = 7.0,
+  height = 4.5,
+  dpi    = 300,
+  bg     = "white"
+)
+```
+
+## In-Hospital Mortality 
+
+```{r, echo=FALSE, message=FALSE}
+mortality_summary <- pod_study_cohort_features %>%
+  count(cluster, mortality, name = "n_patients") %>%
+  group_by(cluster) %>%
+  mutate(
+    percent = 100 * n_patients / sum(n_patients)
+  ) %>%
+  ungroup()
+
+in_hospital_mortality_plot <- ggplot(
+  mortality_summary,
+  aes(
+    x = factor(cluster),
+    y = percent,
+    fill = mortality
+  )
+) +
+  geom_col(
+    position = position_dodge(width = 0.9),
+    width = 0.5
+  ) +
+geom_text(
+  aes(
+    label = paste0(
+      sprintf("%.1f%%", percent),
+      "\n(n=", n_patients, ")"
+    )
+  ),
+  position = position_dodge(width = 0.9),
+  vjust = -0.4,
+  size = 2.5,
+  lineheight = 0.9
+) +
+    scale_fill_manual(
+  values = c(
+    "No" = "#1D3557", 
+    "Yes"      = "#F0E442"   
+  )
+)+
+  scale_y_continuous(
+    limits = c(0, 100),
+    expand = expansion(mult = c(0, 0.01))
+  ) +
+  labs(
+    x = "Cluster",
+    y = "Percentage of patients",
+    fill = "In-hospital mortality"
+  ) + theme_nature 
+
+in_hospital_mortality_plot
+
+ggsave(
+  "figures/main/01_POD/pod_in_hospital_mortality_bar_plot.png",
+  in_hospital_mortality_plot,
+  width  = 7.0,
+  height = 4.5,
+  dpi    = 300,
+  bg     = "white"
+)
+```
+
+## ICU Length of Stay 
+
+```{r, echo=FALSE, message=FALSE}
+los_summary <- pod_study_cohort_features %>%
+  group_by(cluster) %>%
+  summarise(
+    mean_los_days = mean(los_days),
+    sd_los_days   = sd(los_days),
+    n_patients      = n(),
+    .groups = "drop"
+  )
+
+icu_length_of_stay_plot <- ggplot(
+  los_summary,
+  aes(
+    x = factor(cluster),
+    y = mean_los_days,
+    fill = factor(cluster)
+  )
+) +
+  geom_col(width = 0.7) +
+  geom_errorbar(
+    aes(
+      ymin = mean_los_days - sd_los_days / sqrt(n_patients),
+      ymax = mean_los_days + sd_los_days / sqrt(n_patients)
+    ),
+    width = 0.2
+  ) +
+geom_text(
+  aes(
+    y = mean_los_days + sd_los_days / sqrt(n_patients),
+    label = sprintf("%.1f", mean_los_days)
+  ),
+  vjust = -0.7,
+  size = 3.5
+)+
+  scale_fill_manual(values = cluster_colors, guide = "none") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(
+    x = "Cluster",
+    y = "Mean ICU length of stay (days)",
+  ) + theme_nature 
+
+icu_length_of_stay_plot
+
+ggsave(
+  "figures/main/01_POD/pod_icu_length_of_stay_bar_plot.png",
+  icu_length_of_stay_plot,
+  width  = 7.0,
+  height = 4.5,
+  dpi    = 300,
+  bg     = "white"
+)
+```
+
+# Sample EHR Medication Profile
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Sample EHR medication profile (use as Figure 1 example)
+sample_profile <- pod_medications_filtered %>%
+    group_by(subject_id) %>%
+    filter(
+        n_distinct(medication, na.rm = TRUE) >= 4,
+        n() < 10
+    ) %>%
+    ungroup()
+
+sample_profile
+```
+

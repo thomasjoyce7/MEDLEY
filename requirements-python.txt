@@ -1,0 +1,14 @@
+# Python package requirements with versions
+# Format: package==version
+
+numpy==2.3.2
+pandas==2.3.1
+pyarrow==23.0.1
+python-dateutil==2.9.0.post0
+PyYAML==6.0.2
+
+# Analyses were tested using PyTorch 2.7.1 with CUDA 12.4.
+torch==2.7.1
+
+tqdm==4.67.1
+transformers==4.54.1
