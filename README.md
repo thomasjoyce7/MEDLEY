@@ -158,7 +158,7 @@ The full `make reproduce` target runs extraction, HCUP source-file download, coh
 - `scripts/07_clustering/`: PCA, clustering, and cluster assignment scripts in `01_POD/` and `02_PONV/`.
 - `tables/`: generated manuscript and supplemental tables in `01_POD/` and `02_PONV/`.
 
-# External Data Files 
+## External Data Files 
 
 MIMIC-IV data are not included in this repository. The HCUP source files used for surgical cohort extraction can be downloaded into `data/external/`.
 
