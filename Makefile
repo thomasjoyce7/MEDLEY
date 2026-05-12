@@ -9,10 +9,10 @@ LLAMA_MODEL_PATH ?=
 
 .PHONY: help all reproduce dirs \
 	extract hcup-source-files surgery \
-	pod pod-cohort pod-templates pod-llm-template pod-embeddings-local pod-filter-embeddings \
+	pod pod-cohort pod-templates pod-llm-template pod-embeddings-local pod-large-embeddings-local pod-filter-embeddings pod-tokenized-seq-lengths \
 	ponv ponv-cohort ponv-templates ponv-embeddings-local \
 	manuscript manuscript-pod manuscript-ponv manuscript-tables manuscript-figures manuscript-pod-figures manuscript-ponv-figures \
-	submit-pod-embeddings submit-ponv-embeddings submit-pod-clustering submit-ponv-clustering submit-all-slurm \
+	submit-pod-embeddings submit-pod-tokenized-seq-lengths submit-ponv-embeddings submit-pod-clustering submit-ponv-clustering submit-all-slurm \
 	logs
 
 help:
@@ -29,6 +29,11 @@ help:
 	@echo "Embedding and clustering:"
 	@echo "  make pod-llm-template       Run POD decoder-LLM template generation; set LLAMA_MODEL_PATH"
 	@echo "  make pod-embeddings-local   Run POD encoder embeddings locally"
+	@echo "  make pod-large-embeddings-local"
+	@echo "                                Run POD Qwen3 and SFR encoder embeddings locally"
+	@echo "  make pod-filter-embeddings  Filter POD embeddings to the final POD cohort"
+	@echo "  make pod-tokenized-seq-lengths"
+	@echo "                                Build POD tokenized sequence length summary table"
 	@echo "  make ponv-embeddings-local  Run PONV encoder embeddings locally"
 	@echo "  make submit-all-slurm       Submit embedding and clustering jobs to SLURM"
 	@echo ""
@@ -47,8 +52,8 @@ reproduce: dirs extract pod-cohort pod-templates pod-llm-template ponv-cohort po
 
 dirs:
 	mkdir -p data/raw data/external data/derived data/derived/01_POD data/derived/02_PONV
-	mkdir -p data/llm_inputs data/llm_inputs/02_PONV data/embeddings data/embeddings/01_POD data/embeddings/02_PONV
-	mkdir -p data/cohorts data/cohorts/02_PONV data/logs
+	mkdir -p data/llm_inputs data/llm_inputs/01_POD data/llm_inputs/02_PONV data/embeddings data/embeddings/01_POD data/embeddings/02_PONV
+	mkdir -p data/cohorts data/cohorts/01_POD data/cohorts/01_POD/AHC_clusters data/cohorts/01_POD/GMM_clusters data/cohorts/01_POD/HDBSCAN_clusters data/cohorts/01_POD/kmeans_clusters data/cohorts/02_PONV data/logs
 	mkdir -p data/results/clustering/01_POD/AHC data/results/clustering/01_POD/GMM data/results/clustering/01_POD/HDBSCAN data/results/clustering/01_POD/k_means
 	mkdir -p data/results/clustering/02_PONV/AHC data/results/clustering/02_PONV/GMM data/results/clustering/02_PONV/HDBSCAN data/results/clustering/02_PONV/k_means
 	mkdir -p figures/main/01_POD figures/main/02_PONV
@@ -67,9 +72,7 @@ extract: dirs
 	$(R) scripts/01_extract/extract_icu_ventilation.R
 	$(R) scripts/01_extract/extract_pod_medications.R
 	$(R) scripts/01_extract/extract_ponv_medications.R
-	$(R) scripts/01_extract/extract_benzos_medications.R
 	$(R) scripts/01_extract/extract_opioid_medications.R
-	$(R) scripts/01_extract/extract_anesthesia.R
 	$(R) scripts/01_extract/extract_icu_chartevents_rass.R
 
 hcup-source-files: dirs
@@ -106,8 +109,15 @@ pod-embeddings-local: dirs pod-templates pod-llm-template
 	$(PYTHON) scripts/04_embeddings/01_POD/pod_gatortron_base_2k_embeddings.py
 	$(PYTHON) scripts/04_embeddings/01_POD/pod_longformer_base_embeddings.py
 
+pod-large-embeddings-local: dirs pod-templates pod-llm-template
+	$(PYTHON) scripts/04_embeddings/01_POD/pod_Qwen3_embedding_8B.py
+	$(PYTHON) scripts/04_embeddings/01_POD/pod_SFR_embedding_mistral.py
+
 pod-filter-embeddings: dirs
 	$(R) scripts/02_clean/01_POD/filter_pod_embeddings.R
+
+pod-tokenized-seq-lengths: dirs pod-cohort pod-templates pod-llm-template
+	$(PYTHON) scripts/03_descriptives/01_POD/pod_tokenized_seq_lengths_table.py
 
 ################################################################################
 # PONV application
@@ -174,6 +184,9 @@ submit-pod-embeddings:
 	$(SBATCH) scripts/05_slurm/embeddings/01_POD/run_pod_longformer_base_embeddings.sl
 	$(SBATCH) scripts/05_slurm/embeddings/01_POD/run_pod_Qwen3_embedding_8B.sl
 	$(SBATCH) scripts/05_slurm/embeddings/01_POD/run_pod_SFR_embedding_mistral.sl
+
+submit-pod-tokenized-seq-lengths:
+	$(SBATCH) scripts/05_slurm/embeddings/01_POD/run_pod_tokenized_seq_lengths_table.sl
 
 submit-ponv-embeddings:
 	$(SBATCH) scripts/05_slurm/embeddings/02_PONV/run_ponv_clinical_longformer_embeddings_4windows.sl
