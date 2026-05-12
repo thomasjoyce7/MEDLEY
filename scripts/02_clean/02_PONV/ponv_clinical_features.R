@@ -1,4 +1,7 @@
-# Script to obtain and clean other clinical features for the PONV study cohort 
+# Script to obtain and clean other clinical features for the PONV study cohort
+
+# Note: The primary features of interest for the PONV study cohort are history of smoking, postoperative opioid use, and surgery type. 
+# Secondary features are extracted here as well, but we may not use all of these in the final analysis.
 
 # Import libraries
 library(tidyverse)
@@ -55,7 +58,7 @@ smoking_diagnoses <- left_join(smoking_diagnoses, ponv_study_cohort_identifiers 
 
 smoking <- ponv_study_cohort_identifiers %>% select(subject_id, hadm_id) %>% mutate(curr_or_prev_smoker = case_when(subject_id %in% smoking_diagnoses$subject_id ~ "Yes", TRUE ~ "No"))
  
-## Perioperative/postoperative opioid use ----------------------------------------------------------------------------------------
+## Postoperative opioid use ----------------------------------------------------------------------------------------
 
 # Postoperative opioid use is a major risk factor for PONV
 # We only know the surgery date (not exact time or duration)

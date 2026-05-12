@@ -22,14 +22,9 @@ hosp_diagnoses_icd <- read_csv(file.path(config$paths$raw_data, "hosp_diagnoses_
 hosp_d_icd_diagnoses <- read_csv(file.path(config$paths$raw_data, "hosp_d_icd_diagnoses.csv"))
 hosp_admissions <- read_csv(file.path(config$paths$raw_data, "hosp_admissions.csv"))
 
-hosp_emar_benzos <- read_csv(file.path(config$paths$raw_data, "hosp_emar_benzos_filtered.csv"))
-icu_inputevents_benzos <- read_csv(file.path(config$paths$raw_data, "icu_inputevents_benzos_filtered.csv"))
 icu_d_items <- read_csv(file.path(config$paths$raw_data, "icu_d_items.csv"))
 
 icu_procedureevents_ventilation <- read_csv(file.path(config$paths$raw_data, "icu_procedureevents_ventilation_filtered.csv"))
-
-hosp_emar_anesthesia <- read_csv(file.path(config$paths$raw_data, "hosp_emar_anesthesia_filtered.csv"))
-icu_inputevents_anesthesia <- read_csv(file.path(config$paths$raw_data, "icu_inputevents_anesthesia_filtered.csv"))
 
 # BMI --------------------------------------------------------------------------------------
 
@@ -478,45 +473,6 @@ depression_diagnoses <- left_join(depression_diagnoses, pod_positive %>% select(
 depression <- pod_positive %>% select(subject_id, hadm_id, stay_id) %>% mutate(depression = case_when(subject_id %in% depression_diagnoses$subject_id ~ "Yes", TRUE ~ "No"))
 
 
-# Perioperative Benzodiazepine Use ----------------------------------------------------------------------------------------
-
-# Create a binary feature indicating whether the patient took any benzodiazepines between
-# 2 days before first surgery and 7 days after first surgery (or ICU discharge time, whichever comes first)
-
-# Filter hosp_emar_benzos and icu_inputevents_benzos to POD positive patients hadm_id
-hosp_emar_benzos <- hosp_emar_benzos %>% filter(hadm_id %in% pod_positive$hadm_id)
-icu_inputevents_benzos <- icu_inputevents_benzos %>% filter(hadm_id %in% pod_positive$hadm_id)
-
-# Filter hosp_emar_benzos to administered medications
-hosp_emar_benzos <- hosp_emar_benzos %>% filter(event_txt %in% c("Administered", "Administered in Other Location", "Administered Bolus from IV Drip", "Confirmed"))
-
-# Join hosp_emar_benzos with pod_positive and filter to perioperative benzodiazepine use
-hosp_emar_benzos <- left_join(hosp_emar_benzos, pod_positive, by = c("subject_id", "hadm_id"))
-
-hosp_emar_benzos <- hosp_emar_benzos %>%
-  filter(
-    charttime >= (first_surgery_date - lubridate::days(2)) &
-      charttime <= pmin(first_surgery_date + lubridate::days(7), icu_outtime, na.rm = TRUE)
-  ) %>% select(subject_id, hadm_id, stay_id, medication, first_surgery_date, charttime, icu_outtime)
-
-# Add medication names to icu_inputevents_benzos using icd_d_items
-icu_inputevents_benzos <- left_join(icu_inputevents_benzos, icu_d_items %>% select(itemid, label), by = "itemid") %>%
-  rename(medication = label)
-
-# Join icu_inputevents_benzos and filter to perioperative benzodiazepine use
-icu_inputevents_benzos <- left_join(icu_inputevents_benzos, pod_positive, by = c("subject_id", "hadm_id", "stay_id"))
-
-icu_inputevents_benzos <- icu_inputevents_benzos %>%
-  filter(
-    starttime >= (first_surgery_date - lubridate::days(2)) &
-      starttime <= pmin(first_surgery_date + lubridate::days(7), icu_outtime, na.rm = TRUE)
-  ) %>% select(subject_id, hadm_id, stay_id, medication, first_surgery_date, starttime, icu_outtime)
-
-# Create a binary feature for perioperative benzodiazepine use 
-benzodiazepines <- pod_positive %>% select(subject_id, hadm_id, stay_id) %>% mutate(
-  benzodiazepine_use = case_when(subject_id %in% hosp_emar_benzos$subject_id | subject_id %in% icu_inputevents_benzos$subject_id ~ "Yes", TRUE ~ "No"))
-
-
 # Mechanical ventilator use ----------------------------------------------------------
 
 # Create a binary feature for mechanical ventilator use during the ICU stay
@@ -576,11 +532,6 @@ ventilation_duration_mins <- left_join(pod_positive %>% select(subject_id, hadm_
 
 # First procedure type ------------------------------------------------------------------------------
 
-# Note: The first procedure types were already extracted as outlined below. However, we could consider
-# creating a binary variable for each of the 6 main procedure types (similar to what was done for anesthesia types).
-# That way, we could properly account for multiple procedure types instead of just using the most
-# frequent procedure type on the first surgery day. 
-
 # Note: HCUP has a clinical classifications software for classifying ICD-9 and ICD-10
 # procedures into a smaller number of clinical domains.
 
@@ -617,142 +568,8 @@ procedure_types <- procedure_types %>% mutate(first_procedure_type = case_when(
   TRUE ~ "Other"
 )) %>% select(-procedure_type)
 
-
-# Anesthesia type (first surgery only) ----------------------------------------------------------------
-
-# There are four main anesthesia types: General, Regional, Sedation, Local
-
-# Since patients may have used multiple anesthesia types during surgery, create a binary feature for each anesthesia type.
-# For each anesthesia type, patients will be coded as "Yes" if they have at least one anesthesia medication of that type
-# recorded in hosp/emar or icu/inputevents on the first surgery date (-1 day, +3 days), and they will be coded as "No" otherwise.
-
-# Common drug names (both generic and trade names) for the four anesthesia methods
-# https://www.uclahealth.org/medical-services/anesthesiology/types-anesthesia
-
-general_list <- tolower(c(
-  # General Anesthesia
-  "propofol", "diprivan", "disoprivan",
-  "etomidate", "amidate",
-  "ketamine", "ketalar", "ketaset", "ketanest",
-  "thiopental", "pentothal", "trapanal",
-  "methohexital", "brevital",
-  "sevoflurane", "ultane", "sevorane",
-  "desflurane", "suprane",
-  "isoflurane", "forane",
-  "nitrous oxide", "laughing gas"))
-
-regional_list <- tolower(c(
-  # Regional Anesthesia (incl. spinal, epidural)
-  "bupivacaine", "marcaine", "sensorcaine", "vivacaine", "exparel",
-  "ropivacaine", "naropin",
-  "lidocaine", "xylocaine", "lignocaine",
-  "mepivacaine", "carbocaine", "polocaine",
-  "tetracaine", "pontocaine", "amethocaine",
-  "chloroprocaine", "nesacaine",
-  "dibucaine", "nupercainal"))
-
-sedation_list <- tolower(c(
-  # Sedation (used in ICU or during monitored anesthesia care)
-  "midazolam", "versed",
-  "lorazepam", "ativan",
-  "diazepam", "valium",
-  "dexmedetomidine", "precedex", "dexdor", "igalmi",
-  "fentanyl", "sublimaze", "actiq", "duragesic", "abstral", "lazanda",
-  "remifentanil", "ultiva",
-  "sufentanil", "sufenta",
-  "alfentanil", "alfenta",
-  "zolpidem", "ambien", "edluar", "intermezzo", "zolpimist",
-  "propofol-ketamine"))
-
-local_list <- tolower(c(
-  # Local Anesthesia
-  "lidocaine", "xylocaine",
-  "prilocaine", "citanest",
-  "articaine", "septocaine",
-  "benzocaine", "orajel", "anbesol", "cepacol",
-  "procaine", "novocain",
-  "dyclonine", "sucrets",
-  "tetracaine", "pontocaine"))
-
-# Filter hosp_emar_anesthesia and icu_inputevents_anesthesia to POD positive patients hadm_id
-hosp_emar_anesthesia <- hosp_emar_anesthesia %>% filter(hadm_id %in% pod_positive$hadm_id)
-icu_inputevents_anesthesia <- icu_inputevents_anesthesia %>% filter(hadm_id %in% pod_positive$hadm_id)
-
-# Filter hosp_emar_anesthesia to administered medications
-hosp_emar_anesthesia <- hosp_emar_anesthesia %>% filter(event_txt %in% c("Administered", "Administered in Other Location", "Administered Bolus from IV Drip", "Applied", "Confirmed", "Confirmed in Other Location"))
-
-# Join hosp_emar_anesthesia with pod_positive, filter to anesthesia on first surgery day, and add a column for anesthesia type
-hosp_emar_anesthesia <- left_join(hosp_emar_anesthesia, pod_positive, by = c("subject_id", "hadm_id"))
-
-hosp_emar_anesthesia <- hosp_emar_anesthesia %>%
-  mutate(
-    charttime = as.Date(charttime),
-    first_surgery_date = as.Date(first_surgery_date),
-    medication_lower = tolower(medication)
-  ) %>%
-  filter(charttime >= first_surgery_date - 1 & charttime <= first_surgery_date + 3) %>%
-  mutate(anesthesia_type = case_when(
-    str_detect(medication_lower, str_c(general_list, collapse = "|")) ~ "General",
-    str_detect(medication_lower, str_c(regional_list, collapse = "|")) ~ "Regional",
-    str_detect(medication_lower, str_c(sedation_list, collapse = "|")) ~ "Sedation",
-    str_detect(medication_lower, str_c(local_list, collapse = "|")) ~ "Local",
-    TRUE ~ "Unknown"
-  )) %>%
-  select(subject_id, hadm_id, stay_id, anesthesia_type) %>% distinct()
-
-# Add anesthesia medication names to icu_inputevents_anesthesia using icd_d_items
-icu_inputevents_anesthesia <- left_join(icu_inputevents_anesthesia, icu_d_items %>% select(itemid, label), by = "itemid") %>%
-  rename(medication = label)
-
-# Join icu_inputevents_anesthesia with pod_positive, filter to anesthesia on first surgery day, and add a column for anesthesia type
-icu_inputevents_anesthesia <- left_join(icu_inputevents_anesthesia, pod_positive, by = c("subject_id", "hadm_id", "stay_id"))
-
-icu_inputevents_anesthesia <- icu_inputevents_anesthesia %>%
-  mutate(
-    starttime = as.Date(starttime),
-    first_surgery_date = as.Date(first_surgery_date),
-    medication_lower = tolower(medication)
-  ) %>%
-  filter(starttime >= first_surgery_date - 1 & starttime <= first_surgery_date + 3) %>%
-  mutate(anesthesia_type = case_when(
-    str_detect(medication_lower, str_c(general_list, collapse = "|")) ~ "General",
-    str_detect(medication_lower, str_c(regional_list, collapse = "|")) ~ "Regional",
-    str_detect(medication_lower, str_c(sedation_list, collapse = "|")) ~ "Sedation",
-    str_detect(medication_lower, str_c(local_list, collapse = "|")) ~ "Local",
-    TRUE ~ "Unknown"
-  )) %>%
-  select(subject_id, hadm_id, stay_id, anesthesia_type) %>% distinct()
-
-# Combine anesthesia results from hosp/emar and icu/inputevents and filter to distinct rows
-anesthesia_types <- rbind(hosp_emar_anesthesia, icu_inputevents_anesthesia)
-anesthesia_types <- anesthesia_types %>% distinct()
-
-# Create binary features for each anesthesia type
-general <- anesthesia_types %>% filter(anesthesia_type == "General")
-general_anesthesia <- pod_positive %>% select(subject_id, hadm_id, stay_id) %>%
-  mutate(general_anesthesia = case_when(subject_id %in% general$subject_id ~ "Yes",
-                                        TRUE ~ "No"))
-
-regional <- anesthesia_types %>% filter(anesthesia_type == "Regional")
-regional_anesthesia <- pod_positive %>% select(subject_id, hadm_id, stay_id) %>%
-  mutate(regional_anesthesia = case_when(subject_id %in% regional$subject_id ~ "Yes",
-                                        TRUE ~ "No"))
-
-sedation <- anesthesia_types %>% filter(anesthesia_type == "Sedation")
-sedation_anesthesia <- pod_positive %>% select(subject_id, hadm_id, stay_id) %>%
-  mutate(sedation_anesthesia = case_when(subject_id %in% sedation$subject_id ~ "Yes",
-                                        TRUE ~ "No"))
-
-local <- anesthesia_types %>% filter(anesthesia_type == "Local")
-local_anesthesia <- pod_positive %>% select(subject_id, hadm_id, stay_id) %>%
-  mutate(local_anesthesia = case_when(subject_id %in% local$subject_id ~ "Yes",
-                                        TRUE ~ "No"))
-
-
 # Number of surgery days ---------------------------------------------------------
 
-# Note: This is tricky because some of the procedures that patients were billed for
-# by the hospital likely occurred during the same surgical session/operation.
 # To approximate the number of surgeries, count the number of distinct procedure dates for each patient 
 
 surgery_count <- icu_surgery_with_cam_pos %>% select(subject_id, hadm_id, stay_id, procedure_date) %>% 
@@ -795,16 +612,11 @@ clinical_features <- bmi %>%
   left_join(chronic_kidney_disease, by = c("subject_id","hadm_id","stay_id")) %>%
   left_join(dementia, by = c("subject_id","hadm_id","stay_id")) %>%
   left_join(depression, by = c("subject_id","hadm_id","stay_id")) %>%
-  left_join(benzodiazepines, by = c("subject_id","hadm_id","stay_id")) %>%
   left_join(ventilation, by = c("subject_id","hadm_id","stay_id")) %>%
   left_join(invasive_ventilation, by = c("subject_id", "hadm_id", "stay_id")) %>%
   left_join(non_invasive_ventilation, by= c("subject_id", "hadm_id", "stay_id")) %>%
   left_join(ventilation_duration_mins, by = c("subject_id", "hadm_id", "stay_id")) %>%
   left_join(procedure_types, by = c("subject_id","hadm_id","stay_id")) %>%
-  left_join(general_anesthesia, by = c("subject_id","hadm_id","stay_id")) %>%
-  left_join(regional_anesthesia, by = c("subject_id","hadm_id","stay_id")) %>%
-  left_join(sedation_anesthesia, by = c("subject_id","hadm_id","stay_id")) %>%
-  left_join(local_anesthesia, by = c("subject_id","hadm_id","stay_id")) %>%
   left_join(surgery_count, by = c("subject_id","hadm_id","stay_id")) %>%
   left_join(icu_careunit, by = c("subject_id","hadm_id","stay_id"))
   
