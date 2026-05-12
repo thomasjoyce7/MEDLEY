@@ -27,7 +27,7 @@ tokenizers = {
 all_templates = {
     "List": "data/llm_inputs/medications_list_template.jsonl",
     "Text": "data/llm_inputs/medications_text_template.jsonl",
-    "LLM": "data/llm_inputs/medications_llama_template2.jsonl",
+    "LLM": "data/llm_inputs/medications_llama3.3_template.jsonl",
 }
 
 # Helper function to load templates and filter to subject_ids in the final cohort
@@ -158,4 +158,3 @@ with open("tables/01_POD/pod_tokenized_seq_lengths_summary.tex", "w") as f:
 
 
             
-
