@@ -8,10 +8,10 @@ library(kableExtra)
 library(stringr)
 
 # Load clustering results (50 repetitions; 2pcs, centered and unscaled; global mean pooling)
-mp_pca_ahc_2_center <- read_csv("data/results/clustering/01_POD/AHC/pod_ahc_results_10pcs_centered_unscaled_6clusters.csv")
-mp_pca_gmm_2_center <- read_csv("data/results/clustering/01_POD/GMM/pod_gmm_results_50rep_10pcs_centered_unscaled_6clusters.csv")
-mp_pca_hdbscan_2_center <- read_csv("data/results/clustering/01_POD/HDBSCAN/pod_hdbscan_results_10pcs_centered_unscaled_100minPts.csv")
-mp_pca_kmeans_2_center <- read_csv("data/results/clustering/01_POD/k_means/pod_kmeans_results_50rep_10pcs_centered_unscaled_5clusters.csv")
+mp_pca_ahc_2_center <- read_csv("data/results/clustering/01_POD/AHC/pod_ahc_results_2pcs_centered_unscaled_6clusters.csv")
+mp_pca_gmm_2_center <- read_csv("data/results/clustering/01_POD/GMM/pod_gmm_results_50rep_2pcs_centered_unscaled_6clusters.csv")
+mp_pca_hdbscan_2_center <- read_csv("data/results/clustering/01_POD/HDBSCAN/pod_hdbscan_results_2pcs_centered_unscaled_100minPts.csv")
+mp_pca_kmeans_2_center <- read_csv("data/results/clustering/01_POD/k_means/pod_kmeans_results_50rep_2pcs_centered_unscaled_5clusters.csv")
 
 # Helper function to format mean ± sd
 fmt <- function(mean, sd) {
@@ -142,5 +142,5 @@ for (br in algorithm_breaks) {
   kbl <- kbl %>% kableExtra::row_spec(br, hline_after = TRUE)
 }
 
-save_kable(kbl, "tables/01_POD/pod_clustering_results_pca10d_centered_unscaled_mean_pooling.tex")
+save_kable(kbl, "tables/01_POD/pod_clustering_results_pca2d_centered_unscaled_mean_pooling.tex")
 
