@@ -15,7 +15,7 @@ library(patchwork)
 source("scripts/00_utils/00_utils.R")
 
 # Option to use large encoder models (instead of smaller models)
-large_encoders <- TRUE
+large_encoders <- FALSE
 
 # Provide embedding names to load and process 
 if (large_encoders == TRUE){
@@ -33,7 +33,7 @@ embeddings_all_templates <- load_pod_embeddings(embedding_names)
 # Settings --------------------------------------------------------------------------------------
 
 # Elbow method settings for determining the optimal cluster number 
-elbow_method_settings <- list(n_pcs=20, omit_first_pc=FALSE, center=TRUE, scale=FALSE, k_max=20)
+elbow_method_settings <- list(n_pcs=2, omit_first_pc=FALSE, center=TRUE, scale=FALSE, k_max=20)
 # n_pcs: Number of principle components to use for clustering 
 # omit_first_pc: Whether to remove the first PC before clustering 
 # center: Whether to center the embeddings prior to applying PCA for embedding dimension reduction
@@ -41,7 +41,7 @@ elbow_method_settings <- list(n_pcs=20, omit_first_pc=FALSE, center=TRUE, scale=
 # k_max: Maximum number of clusters to include in the elbow plot 
 
 # GMM clustering settings 
-gmm_settings <- list(optimal_G=6, n_pcs=10, omit_first_pc=FALSE, center=TRUE, scale=FALSE, n_repeats=50)
+gmm_settings <- list(optimal_G=6, n_pcs=2, omit_first_pc=FALSE, center=TRUE, scale=FALSE, n_repeats=50)
 # n_pcs: Number of principle components to use for clustering 
 # omit_first_pc: Whether to remove the first PC before clustering
 # center: Whether to center the embeddings prior to applying PCA for embedding dimension reduction
@@ -70,7 +70,7 @@ if (large_encoders == TRUE){
 }
 
 # Indication of whether the elbow method and/or GMM clustering should be performed
-run_elbow_method <- FALSE
+run_elbow_method <- TRUE
 run_clustering <- TRUE
 
 # Run clustering code ---------------------------------------------------------------------------

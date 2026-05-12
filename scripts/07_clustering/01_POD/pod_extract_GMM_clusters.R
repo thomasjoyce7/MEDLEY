@@ -14,15 +14,13 @@ library(patchwork)
 # Load helper functions
 source("scripts/00_utils/00_utils.R")
 
-embedding_names <- c("cl_list")
-
-# Provide embedding names to load and process 
-# embedding_names <- c("cl_list", "cl_text",
-#                       "gt_base_2k_list", "gt_base_2k_text",
-#                       "lf_list", "lf_text", 
-#                       "bio_clin_bert_list", "bio_clin_bert_text", 
-#                       "gt_base_list", "gt_base_text", 
-#                       "bert_list", "bert_text")
+# Provide embedding names to load and process (condense list if desired) 
+embedding_names <- c("cl_list", "cl_text",
+                       "gt_base_2k_list", "gt_base_2k_text",
+                       "lf_list", "lf_text", 
+                       "bio_clin_bert_list", "bio_clin_bert_text", 
+                       "gt_base_list", "gt_base_text", 
+                       "bert_list", "bert_text")
 
 # Load embeddings from embedding_names using helper function 
 embeddings_all_templates <- load_pod_embeddings(embedding_names)
@@ -30,8 +28,9 @@ embeddings_all_templates <- load_pod_embeddings(embedding_names)
 # Settings --------------------------------------------------------------------------------------
 
 # GMM clustering settings 
-gmm_settings <- list(optimal_G=6, n_pcs=2, center=TRUE, scale=FALSE, n_repeats=1)
+gmm_settings <- list(optimal_G=6, n_pcs=2, omit_first_pc=FALSE, center=TRUE, scale=FALSE, n_repeats=1)
 # n_pcs: Number of principle components to use for clustering 
+# omit_first_pc: Whether to remove the first PC before clustering
 # center: Whether to center the embeddings prior to applying PCA for embedding dimension reduction
 # scale: Whether to scale the embeddings prior to applying PCA for embedding dimension reduction 
 # optimal_k: optimal number of Gaussian components (i.e., clusters) determined by the elbow method

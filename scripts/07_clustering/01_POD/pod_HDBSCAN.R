@@ -13,7 +13,7 @@ library(proxy)
 source("scripts/00_utils/00_utils.R")
 
 # Option to use large encoder models (instead of smaller models)
-large_encoders <- TRUE
+large_encoders <- FALSE
 
 # Provide embedding names to load and process 
 if (large_encoders == TRUE){
@@ -32,7 +32,7 @@ embeddings_all_templates <- load_pod_embeddings(embedding_names)
 # Settings --------------------------------------------------------------------------------------
 
 # HDBSCAN clustering settings 
-hdbscan_settings <- list(n_pcs=10, omit_first_pc=FALSE, center=TRUE, scale=FALSE, minPts=100)
+hdbscan_settings <- list(n_pcs=2, omit_first_pc=FALSE, center=TRUE, scale=FALSE, minPts=100)
 # n_pcs: Number of principle components to use for clustering 
 # omit_first_pc: Whether to remove the first PC before clustering 
 # center: Whether to center the embeddings prior to applying PCA for embedding dimension reduction

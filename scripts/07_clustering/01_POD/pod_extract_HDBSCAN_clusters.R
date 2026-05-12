@@ -12,13 +12,13 @@ library(proxy)
 # Load helper functions
 source("scripts/00_utils/00_utils.R")
 
-# Provide embedding names to load and process 
-# embedding_names <- c("cl_list", "cl_text",
-#                       "gt_base_2k_list", "gt_base_2k_text",
-#                       "lf_list", "lf_text", 
-#                       "bio_clin_bert_list", "bio_clin_bert_text", 
-#                       "gt_base_list", "gt_base_text", 
-#                       "bert_list", "bert_text")
+# Provide embedding names to load and process (condense list if desired) 
+embedding_names <- c("cl_list", "cl_text",
+                       "gt_base_2k_list", "gt_base_2k_text",
+                       "lf_list", "lf_text", 
+                       "bio_clin_bert_list", "bio_clin_bert_text", 
+                       "gt_base_list", "gt_base_text", 
+                       "bert_list", "bert_text")
 
 embedding_names <- c("cl_list")
 
