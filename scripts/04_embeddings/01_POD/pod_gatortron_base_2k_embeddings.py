@@ -98,8 +98,7 @@ def embeddings(input_path):
 # Calculate embeddings for each serialization template format and save as csv files
 print("Calculating gatortron-base-2k embeddings.")
 
-#input_paths = [list_template_path, text_template_path, llm_template_path]
-input_paths = [llm_template_path]
+input_paths = [list_template_path, text_template_path, llm_template_path]
 
 for input_path in input_paths:
     

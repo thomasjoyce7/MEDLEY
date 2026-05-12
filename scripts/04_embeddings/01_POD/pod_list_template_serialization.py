@@ -1,4 +1,4 @@
-# Script to serialize tabular POD medication data to a text format using a basic list template
+# Script to serialize tabular POD medication data to a text format using a list template
 
 import pandas as pd
 import yaml
