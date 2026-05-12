@@ -103,6 +103,7 @@ Run commands from the repository root.
 
    ```bash
    make pod-embeddings-local LLAMA_MODEL_PATH=/path/or/huggingface-id
+   make pod-large-embeddings-local LLAMA_MODEL_PATH=/path/or/huggingface-id
    make ponv-embeddings-local
    ```
 
@@ -130,10 +131,14 @@ The [Makefile](Makefile) provides the main user-facing workflow.
 - `make pod-templates`: create POD list and text templates.
 - `make pod-llm-template`: generate POD decoder-LLM summaries in `data/llm_inputs/`.
 - `make pod-embeddings-local`: run POD encoder embeddings locally.
+- `make pod-large-embeddings-local`: run POD Qwen3 and SFR encoder embeddings locally.
+- `make pod-filter-embeddings`: filter POD embeddings to the final POD cohort.
+- `make pod-tokenized-seq-lengths`: build the POD tokenized sequence length summary table.
 - `make ponv-cohort`: construct the PONV analysis cohort.
 - `make ponv-templates`: create PONV list and text templates.
 - `make ponv-embeddings-local`: run PONV encoder embeddings locally.
 - `make submit-pod-embeddings`: submit POD embedding jobs to SLURM.
+- `make submit-pod-tokenized-seq-lengths`: submit the POD tokenized sequence length table job to SLURM.
 - `make submit-ponv-embeddings`: submit PONV embedding jobs to SLURM.
 - `make submit-pod-clustering`: submit POD clustering jobs to SLURM.
 - `make submit-ponv-clustering`: submit PONV clustering jobs to SLURM.
