@@ -38,8 +38,9 @@ silhouette_plot_settings <- list(n_pcs=5, omit_first_pc = FALSE, center=TRUE, sc
 # k_range: Range of cluster numbers to plot 
 
 # AHC clustering settings 
-ahc_settings <- list(optimal_k=7, n_pcs=5, omit_first_pc = FALSE, center=TRUE, scale=FALSE)
+ahc_settings <- list(optimal_k=8, n_pcs=5, omit_first_pc = FALSE, center=TRUE, scale=FALSE)
 # n_pcs: Number of principle components to use for clustering 
+# omit_first_pc: Whether to remove the first PC before clustering
 # center: Whether to center the embeddings prior to applying PCA for embedding dimension reduction
 # scale: Whether to scale the embeddings prior to applying PCA for embedding dimension reduction 
 # optimal_k: optimal cluster number determined by the Silhouette method
@@ -80,9 +81,9 @@ dendrogram_long_seq_encoders_output_path <- file.path(
 
 # Indication of whether to run the code for Silhouette plots (to determine the optimal cluster number),
 # AHC clustering, and dendrogram plots 
-run_silhouette_method <- FALSE
+run_silhouette_method <- TRUE
 run_clustering <- TRUE
-run_dendrograms <- FALSE 
+run_dendrograms <- TRUE 
 
 # Run clustering -------------------------------------------------------------------------------
 
@@ -103,7 +104,6 @@ ahc_silhouette_plot <- function(embeddings_df, n_pcs = silhouette_plot_settings$
   }
   
   # Compute the distance matrix for AHC using Euclidean distance
-  #pca_data_norm <- pca_data / sqrt(rowSums(pca_data^2) + 1e-8)  # Normalize rows
   dist_matrix <- dist(pca_data, method = "euclidean")
   
   # Apply AHC
@@ -204,7 +204,6 @@ pca_ahc <- function(embeddings_df, optimal_k = ahc_settings$optimal_k,
   }
   
   # Compute the distance matrix for AHC using Euclidean distance
-  #pca_data_norm <- pca_data / sqrt(rowSums(pca_data^2) + 1e-8)  # Normalize rows
   dist_matrix <- dist(pca_data, method = "euclidean")
   
   # Apply AHC

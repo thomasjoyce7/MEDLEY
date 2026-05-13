@@ -15,7 +15,7 @@ library(arrow)
 # Load helper functions
 source("scripts/00_utils/01_utils_ponv_4windows.R")
 
-# Provide embedding names to load and process 
+# Provide embedding names to load and process (list can be condensed if desired)
 embedding_names <- c("cl_list", "cl_text",
                      "gt_base_2k_list", "gt_base_2k_text",
                      "lf_list", "lf_text",
@@ -31,6 +31,7 @@ embeddings_all_templates <- load_ponv_embeddings(embedding_names)
 # GMM clustering settings 
 gmm_settings <- list(optimal_G=8, n_pcs=5, center=TRUE, scale=FALSE, n_repeats=1, omit_first_pc = FALSE)
 # n_pcs: Number of principle components to use for clustering 
+# omit_first_pc: Whether to remove the first PC before clustering
 # center: Whether to center the embeddings prior to applying PCA for embedding dimension reduction
 # scale: Whether to scale the embeddings prior to applying PCA for embedding dimension reduction 
 # optimal_k: optimal number of Gaussian components (i.e., clusters) determined by the elbow method

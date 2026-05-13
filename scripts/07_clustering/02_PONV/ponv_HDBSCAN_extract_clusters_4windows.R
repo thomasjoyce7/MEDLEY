@@ -13,7 +13,7 @@ library(arrow)
 # Load helper functions
 source("scripts/00_utils/01_utils_ponv_4windows.R")
 
-# Provide embedding names to load and process 
+# Provide embedding names to load and process (list can be condensed if desired)
 embedding_names <- c("cl_list", "cl_text",
                      "gt_base_2k_list", "gt_base_2k_text",
                      "lf_list", "lf_text",

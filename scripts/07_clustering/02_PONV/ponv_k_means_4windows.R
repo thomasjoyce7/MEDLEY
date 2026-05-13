@@ -37,7 +37,7 @@ elbow_method_settings <- list(n_pcs=5, omit_first_pc=FALSE, center=TRUE, scale=F
 # k_max: Maximum number of clusters to include in the elbow plot 
 
 # k-means clustering settings 
-k_means_settings <- list(optimal_k=7, omit_first_pc=FALSE, n_pcs=5, center=TRUE, scale=FALSE, n_repeats=50)
+k_means_settings <- list(optimal_k=8, omit_first_pc=FALSE, n_pcs=5, center=TRUE, scale=FALSE, n_repeats=50)
 # n_pcs: Number of principle components to use for clustering 
 # omit_first_pc: Whether to remove the first PC before clustering 
 # center: Whether to center the embeddings prior to applying PCA for embedding dimension reduction
@@ -64,7 +64,7 @@ clustering_output_path <- file.path(
 )
 
 # Indication of whether the elbow method and/or k-means++ clustering should be performed
-run_elbow_method <- FALSE
+run_elbow_method <- TRUE
 run_clustering <- TRUE
 
 
