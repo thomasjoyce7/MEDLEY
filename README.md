@@ -2,15 +2,15 @@
 
 This repository contains code for the MEDLEY framework described in "Medication-use phenotypes from large language model embeddings identify distinct postoperative recovery trajectories." 
 
-The MEDLEY framework builds perioperative medication histories from MIMIC-IV, transforms tabular medication histories into standardized clinical narratives, generates large language model embeddings, clusters patient-level representations, and produces the manuscript tables and scripted figure outputs.
+The MEDLEY framework transforms tabular medication profiles from electronic health records into standardized clinical narratives, generates large language model embeddings, and clusters patient-level representations to reveal clinically meaningful medication-use phenotypes.
 
 ![Overview of the MEDLEY framework](figures/main/Figure1.png)
 
-Figure 1. Overview of the MEDLEY framework.
+**Figure 1. Overview of the MEDLEY framework.**
 
 The code is organized around two applications:
 
-- POD: postoperative delirium medication histories among ICU surgery patients with positive CAM-ICU assessments.
+- POD: postoperative delirium medication histories among surgical ICU patients with positive CAM-ICU assessments.
 - PONV: postoperative nausea and vomiting medication histories among in-hospital surgical patients with a clearly defined perioperative window spanning from one day before surgery to four days after surgery. 
 
 The datasets used in both case studies were derived from the Medical Information Mart for Intensive Care (MIMIC)-IV database (version 3.1) (https://physionet.org/content/mimiciv/3.1/hosp/#files-panel).
@@ -23,7 +23,7 @@ Database access is restricted to credentialed PhysioNet users who have completed
 
 ## MEDLEY Overview
 
-MEDLEY (Medication Embeddings for Longitudinal Phenotyping) is a framework for phenotyping patients from longitudinal medication-use profiles.
+MEDLEY (**M**edication **E**mbe**D**dings for **L**ongitudinal Ph**E**not**Y**ping) is a framework for phenotyping patients from longitudinal medication-use profiles.
 
 The computational workflow follows the manuscript framework:
 
@@ -32,7 +32,7 @@ The computational workflow follows the manuscript framework:
 3. Serialize tabular medication histories into list and text templates; for POD, optionally generate decoder-LLM summaries.
 4. Generate patient-level encoder embeddings from the serialized medication histories.
 5. Run PCA, clustering, and cluster assignment workflows.
-6. Produce manuscript tables and scripted figure outputs for phenotype interpretation.
+6. Produce manuscript tables and scripted figure outputs for subgroup analysis and phenotyping.
 
 Some embedding and clustering steps are computationally intensive and are expected to run on a GPU-enabled cluster. The repository therefore includes both local Makefile targets and SLURM submission scripts.
 
@@ -72,7 +72,7 @@ Run commands from the repository root.
    make extract
    ```
 
-6. Download HCUP source files.
+6. Download Healthcare Cost and Utilization Project (HCUP) source files.
 
    This step downloads the Procedure Classes and clinical-domain CSV files used for surgical cohort extraction. It is also run automatically by `make surgery`, `make pod-cohort`, and `make ponv-cohort`.
 
@@ -155,7 +155,7 @@ The full `make reproduce` target runs extraction, HCUP source-file download, coh
 - `reports/`: scripts for summary tables and clustering reports, organized by application.
 - `scripts/00_utils/`: shared R helper functions for POD and PONV analyses.
 - `scripts/01_extract/`: MIMIC-IV table extraction scripts and HCUP source-file downloader.
-- `scripts/02_clean/`: shared surgery cohort construction plus POD and PONV cohort construction and feature engineering in `01_POD/` and `02_PONV/`.
+- `scripts/02_clean/`: shared surgical cohort construction plus POD and PONV cohort construction and feature engineering in `01_POD/` and `02_PONV/`.
 - `scripts/03_descriptives/`: descriptive analyses, table scripts, and manuscript figure notebooks, organized by application.
 - `scripts/04_embeddings/`: POD and PONV serialization and encoder embedding scripts in `01_POD/` and `02_PONV/`.
 - `scripts/05_slurm/`: SLURM submission scripts for heavier embedding and clustering jobs, organized by workflow and application.
