@@ -1,6 +1,6 @@
 # MEDLEY Code Repository
 
-This repository contains code for the MEDLEY framework described in "Medication-use phenotypes from large language model embeddings identify distinct postoperative recovery trajectories." 
+This repository contains code for the MEDLEY framework described in "Large language model representation learning of longitudinal medication trajectories reveals postoperative recovery phenotypes." 
 
 The MEDLEY framework transforms tabular medication profiles from electronic health records into standardized clinical narratives, generates large language model embeddings, and clusters patient-level representations to reveal clinically meaningful medication-use phenotypes.
 
