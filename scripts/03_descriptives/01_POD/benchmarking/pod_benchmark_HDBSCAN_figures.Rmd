@@ -1,0 +1,415 @@
+---
+title: "Benchmarking MEDLEY against conventional medication representations"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+# Set working directory as project root directory
+candidate_roots <- unique(c(
+  getwd(),
+  normalizePath(file.path(getwd(), dirname(knitr::current_input()), "../../../.."), mustWork = FALSE),
+  normalizePath(file.path(dirname(knitr::current_input()), "../../../.."), mustWork = FALSE)
+))
+project_root <- candidate_roots[file.exists(file.path(candidate_roots, "config", "paths.yml"))][1]
+knitr::opts_knit$set(root.dir = project_root)
+```
+
+# Import Data
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+# Import libraries
+library(readr)
+library(tidyverse)
+library(cluster)
+library(clusterCrit)
+library(uwot)
+library(proxy)
+library(kableExtra)
+library(forcats)
+library(lubridate)
+library(survival)
+library(stringr)
+library(scales)
+library(webshot2)
+library(yaml)
+
+# Load config
+config <- yaml::yaml.load_file("config/paths.yml")
+pod_derived_dir <- file.path(config$paths$derived_data, "01_POD")
+pod_results_benchmarking_dir <- file.path("data", "results", "clustering", "01_POD", "benchmarking")
+pod_hdbscan_results_dir <- file.path("data", "results", "clustering", "01_POD", "HDBSCAN")
+pod_hdbscan_cohort_dir <- file.path(config$paths$cohorts, "01_POD", "HDBSCAN_clusters")
+pod_figures_dir <- file.path(config$paths$figures, "main", "01_POD")
+
+# Import clustering results 
+benchmarking_results <- read_csv(file.path(pod_results_benchmarking_dir, "pod_hdbscan_benchmark_results_hdbscan_100minPts.csv"))
+
+medley_hdbscan_results <- read_csv(file.path(pod_hdbscan_results_dir, "pod_hdbscan_results_2pcs_centered_unscaled_100minPts.csv"))
+
+# Import POD cohort features and medication data 
+pod_study_cohort_features <- read_csv(file.path(config$paths$cohorts, "final_cohort_features.csv"))
+pod_medications <- read_csv(file.path(config$paths$derived_data, "pod_medications_cleaned.csv"))
+
+# Filter pod_medications to subjects in pod_study_cohort_features
+pod_medications_filtered <- pod_medications %>% filter(subject_id %in% pod_study_cohort_features$subject_id)
+
+# Add column for total POD medications administered to pod_study_cohort_features 
+pod_med_admin <- pod_medications_filtered %>%
+  count(subject_id, name = "total_pod_med_admin")
+
+pod_study_cohort_features <- pod_study_cohort_features %>%
+  left_join(pod_med_admin, by = "subject_id") %>%
+  mutate(
+    total_pod_med_admin = coalesce(total_pod_med_admin, 0L))
+
+# Import medication representations
+binary_representation <- read_csv(file.path(pod_derived_dir, "pod_med_binary_rep.csv"))
+count_representation <- read_csv(file.path(pod_derived_dir, "pod_med_count_rep.csv"))
+cumulative_dose_representation <- read_csv(file.path(pod_derived_dir, "pod_med_cumulative_dose_rep.csv"))
+
+# Import cluster assignments
+medley_cluster_assignments <- read_csv(file.path(pod_hdbscan_cohort_dir, "pod_hdbscan_cl_list_clusters_2pcs_centered_unscaled_100minPts.csv"))
+
+binary_med_pca_cluster_assignments <- read_csv(file.path(pod_results_benchmarking_dir, "binary_med_pca2d_hdbscan_clusters_100minPts.csv"))
+
+count_med_pca_cluster_assignments <- read_csv(file.path(pod_results_benchmarking_dir, "count_med_pca2d_hdbscan_clusters_100minPts.csv"))
+
+cumulative_dose_med_pca_cluster_assignments <- read_csv(file.path(pod_results_benchmarking_dir, "cumulative_dose_med_pca2d_hdbscan_clusters_100minPts.csv"))
+
+dir.create(pod_figures_dir, recursive = TRUE, showWarnings = FALSE)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Colorblind friendly cluster colors 
+cluster_colors <- c(
+  "1" = "#56B4E9",
+  "2" = "#E69F00",  
+  "3" = "#009E73",  
+  "4" = "#0072B2",  
+  "5" = "#D55E00",  
+  "6" = "#CC79A7",
+  "7" = "#F0E442",
+  "8" = "#999999")
+
+# Nature themed ggplot
+theme_nature <- theme_minimal(base_size = 11, base_family = "") +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black", size = 0.3),
+    axis.ticks = element_line(color = "black", size = 0.3),
+    axis.text  = element_text(size = 11),
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 11),
+    legend.position = "right",
+    legend.text  = element_text(size = 11),
+    legend.title = element_text(size = 11)
+  )
+```
+
+# 2D PCA visualizations
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+create_pca_plot <- function(data,
+                            cluster_assignments,
+                            title) {
+
+  # PCA on representation
+  pca_result <- prcomp(
+    data %>% select(-subject_id, -hadm_id, -stay_id),
+    center = TRUE,
+    scale. = FALSE
+  )
+
+  pca_data <- as.data.frame(pca_result$x[, 1:2])
+
+  # Add cluster labels
+  plot_df <- cbind(
+    cluster_assignments %>% select(subject_id, cluster),
+    pca_data
+  )
+
+  ggplot(plot_df,
+         aes(x = PC1, y = PC2,
+             color = factor(cluster))) +
+    geom_point(size = 2, alpha = 0.8) +
+    scale_color_manual(values = cluster_colors) +
+    labs(
+      title = title,
+      x = "PC1",
+      y = "PC2",
+      color = "Cluster"
+    ) +
+    theme_nature
+}
+
+p1 <- create_pca_plot(
+  binary_representation,
+  binary_med_pca_cluster_assignments,
+  "Binary (PCA)"
+)
+
+p2 <- create_pca_plot(
+  count_representation,
+  count_med_pca_cluster_assignments,
+  "Count (PCA)"
+)
+
+p3 <- create_pca_plot(
+  cumulative_dose_representation,
+  cumulative_dose_med_pca_cluster_assignments,
+  "Cumulative Dose (PCA)"
+)
+
+library(patchwork)
+
+p1 / p2 / p3
+```
+
+# Cluster Summary Tables
+
+```{r, echo=FALSE, message=FALSE}
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+
+create_cluster_summary_kable <- function(cluster_assignments,
+                                         method_name,
+                                         include_noise = FALSE) {
+  
+  summary_df <- cluster_assignments %>%
+    select(subject_id, cluster, is_noise) %>%
+    left_join(pod_study_cohort_features, by = "subject_id") %>%
+    mutate(
+      cluster = ifelse(is_noise, "Noise", paste0("Cluster ", cluster)),
+      cluster = factor(cluster),
+      gender = factor(gender),
+      pod_medication_use = factor(pod_medication_use)
+    )
+  
+  if (!include_noise) {
+    summary_df <- summary_df %>%
+      filter(!is_noise)
+  }
+  
+  cluster_summary <- summary_df %>%
+    group_by(cluster) %>%
+    summarise(
+      `Count` = n(),
+      
+      `POD medication use, n (%)` = paste0(
+        sum(pod_medication_use == "Yes", na.rm = TRUE), " (",
+        round(100 * mean(pod_medication_use == "Yes", na.rm = TRUE), 1), "%)"
+      ),
+      
+      `POD med administrations, median (min, max)` = paste0(
+        round(median(total_pod_med_admin, na.rm = TRUE), 1), " (",
+        round(min(total_pod_med_admin, na.rm = TRUE), 1), ", ",
+        round(max(total_pod_med_admin, na.rm = TRUE), 1), ")"
+      ),
+      
+      `Age, mean (SD)` = paste0(
+        round(mean(age, na.rm = TRUE), 1), " (",
+        round(sd(age, na.rm = TRUE), 1), ")"
+      ),
+      
+      `Male, n (%)` = paste0(
+        sum(gender == "Male", na.rm = TRUE), " (",
+        round(100 * mean(gender == "Male", na.rm = TRUE), 1), "%)"
+      ),
+      
+      `POD resolution days, median (IQR)` = paste0(
+        round(median(pod_resolution_days, na.rm = TRUE), 1), " (",
+        round(quantile(pod_resolution_days, 0.25, na.rm = TRUE), 1), ", ",
+        round(quantile(pod_resolution_days, 0.75, na.rm = TRUE), 1), ")"
+      ),
+      .groups = "drop"
+    )
+  
+  cluster_summary %>%
+    kable(
+      caption = paste0(method_name, " cluster characteristics"),
+      align = "lcccccc",
+      booktabs = TRUE
+    ) %>%
+    kable_styling(
+      full_width = FALSE,
+      position = "center",
+      font_size = 10
+    )
+}
+
+binary_pca_summary <- create_cluster_summary_kable(
+  binary_med_pca_cluster_assignments,
+  method_name = "Binary representation, with PCA"
+)
+
+count_pca_summary <- create_cluster_summary_kable(
+  count_med_pca_cluster_assignments,
+  method_name = "Count representation, with PCA"
+)
+
+cumulative_dose_pca_summary <- create_cluster_summary_kable(
+  cumulative_dose_med_pca_cluster_assignments,
+  method_name = "Cumulative dose representation, with PCA"
+)
+
+binary_pca_summary
+count_pca_summary
+cumulative_dose_pca_summary
+```
+
+# Benchmarking Results Table 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Define colors for methods
+method_colors <- c(
+  "#A6CEE3",  # MEDLEY (light blue)
+  "#B2DF8A",  # Binary (light green)
+  "#FDBF6F",  # Counts (light orange)
+  "#CAB2D6"   # Cumulative dose (light purple)
+)
+
+# Benchmarking Results Table
+medley_hdbscan_cl_list <- medley_hdbscan_results %>%
+  filter(method == "CL List")
+
+medley_hdbscan_cl_list$noise_n <-
+  nrow(medley_cluster_assignments %>% filter(cluster == 0))
+
+comparison_methods <- benchmarking_results %>%
+  filter(preprocessing == "PCA_2_PCs") %>%
+  select(-preprocessing)
+
+benchmarking_table_data <- rbind(
+  medley_hdbscan_cl_list,
+  comparison_methods
+)
+
+benchmarking_table_data <- benchmarking_table_data %>%
+  select(method, num_clusters, noise_n, silhouette, chi, dbi) %>%
+  mutate(
+    Method = c(
+      "MEDLEY",
+      "Binary indicators",
+      "Medication counts",
+      "Cumulative dose"
+    ),
+    `Number of clusters` = num_clusters,
+    `Noise (%)` = round(100 * noise_n / nrow(pod_study_cohort_features), 1),
+    `SS ↑` = round(silhouette, 3),
+    `CHI ↑` = formatC(chi, format = "e", digits = 2),
+    `DBI ↓` = round(dbi, 3)
+  ) %>%
+  select(Method, `Number of clusters`, `Noise (%)`, `SS ↑`, `CHI ↑`, `DBI ↓`)
+
+benchmarking_table_data <- benchmarking_table_data %>%
+  mutate(
+    `CHI ↑` = formatC(`CHI ↑`, format = "e", digits = 2),
+    `CHI ↑` = gsub("e\\+0?", "e", `CHI ↑`)
+  )
+
+# Add a column for representative phenotypes
+benchmarking_table_data$`Representative phenotypes` <- c(
+  "No medications; sedative-dominant care; targeted vs. multimodal therapy",
+  "Medication users vs. non-users",
+  "Low-, medium-, and high-frequency medication use",
+  "Low- vs. high-intensity exposure"
+)
+
+# Change row ordering to place MEDLEY at the bottom
+benchmarking_table_data <- benchmarking_table_data[c(2:nrow(benchmarking_table_data), 1), ]
+
+benchmarking_clustering_results <- benchmarking_table_data %>%
+  kable(
+    format = "html",
+    align = "lcccccc",
+    escape = FALSE
+  ) %>%
+  # Fix column widths 
+  column_spec(1, width = "5cm") %>% 
+  column_spec(2, width = "3cm") %>%
+  column_spec(3, width = "3cm") %>%
+  column_spec(4, width = "4cm") %>%
+  column_spec(5, width = "4cm") %>%
+  column_spec(6, width = "4cm") %>%
+  column_spec(7, width = "10cm") %>%
+  column_spec(
+    1,
+    bold = TRUE,
+    background = method_colors,
+    color = "black"
+  ) %>%
+  kable_styling(
+    full_width = FALSE,
+    font_size = 14
+  )
+
+# Save table as a PNG
+save_kable(
+  benchmarking_clustering_results,
+  file = file.path(pod_figures_dir, "pod_benchmarking_clustering_results_table_for_figure.png"),
+  zoom = 2
+)
+
+benchmarking_clustering_results
+```
+
+# Methods Comparison Table
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(kableExtra)
+library(dplyr)
+
+check <- "\u2713"   # ✓
+cross <- "\u2717"   # ✗
+
+methods_summary <- data.frame(
+  Method = c("Binary indicators",
+             "Medication counts",
+             "Cumulative dose",
+             "MEDLEY"),
+  Exposure = c(check, check, check, check),
+  Frequency = c(cross, check, cross, check),
+  `Dose intensity` = c(cross, cross, check, check),
+  Timing = c(cross, cross, cross, check),
+  `Medication sequence` = c(cross, cross, cross, check),
+  check.names = FALSE
+)
+
+benchmark_methods_comparison <- methods_summary %>%
+  kable(
+    format = "html",
+    escape = FALSE,
+    align = "lccccc"
+  ) %>%
+  # Fix column widths 
+  column_spec(1, width = "4cm") %>% 
+  column_spec(2, width = "3.5cm") %>%
+  column_spec(3, width = "3.5cm") %>%
+  column_spec(4, width = "3.5cm") %>%
+  column_spec(5, width = "3.5cm") %>%
+  column_spec(6, width = "4.5cm") %>%
+    column_spec(
+    1,
+    bold = TRUE,
+    background = method_colors,
+    color = "black"
+  ) %>%
+  kable_styling(
+    full_width = FALSE,
+    font_size = 14
+  )
+
+# Save table as a PNG
+save_kable(
+  benchmark_methods_comparison,
+  file = file.path(pod_figures_dir, "pod_benchmark_methods_comparison_table_for_figure.png"),
+  zoom = 2
+)
+
+benchmark_methods_comparison
+```
+
+
