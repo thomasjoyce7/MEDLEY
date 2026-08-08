@@ -10,6 +10,7 @@ LLAMA_MODEL_PATH ?=
 .PHONY: help all reproduce dirs \
 	extract hcup-source-files surgery \
 	pod pod-cohort pod-templates pod-llm-template pod-embeddings-local pod-large-embeddings-local pod-filter-embeddings pod-tokenized-seq-lengths \
+	pod-benchmark pod-benchmark-clustering pod-benchmark-tables pod-benchmark-figures \
 	ponv ponv-cohort ponv-templates ponv-embeddings-local \
 	manuscript manuscript-pod manuscript-ponv manuscript-tables manuscript-figures manuscript-pod-figures manuscript-ponv-figures \
 	submit-pod-embeddings submit-pod-tokenized-seq-lengths submit-ponv-embeddings submit-pod-clustering submit-ponv-clustering submit-all-slurm \
@@ -34,6 +35,7 @@ help:
 	@echo "  make pod-filter-embeddings  Filter POD embeddings to the final POD cohort"
 	@echo "  make pod-tokenized-seq-lengths"
 	@echo "                                Build POD tokenized sequence length summary table"
+	@echo "  make pod-benchmark          Run POD conventional-representation benchmarking"
 	@echo "  make ponv-embeddings-local  Run PONV encoder embeddings locally"
 	@echo "  make submit-all-slurm       Submit embedding and clustering jobs to SLURM"
 	@echo ""
@@ -54,12 +56,12 @@ dirs:
 	mkdir -p data/raw data/external data/derived data/derived/01_POD data/derived/02_PONV
 	mkdir -p data/llm_inputs data/llm_inputs/01_POD data/llm_inputs/02_PONV data/embeddings data/embeddings/01_POD data/embeddings/02_PONV
 	mkdir -p data/cohorts data/cohorts/01_POD data/cohorts/01_POD/AHC_clusters data/cohorts/01_POD/GMM_clusters data/cohorts/01_POD/HDBSCAN_clusters data/cohorts/01_POD/kmeans_clusters data/cohorts/02_PONV data/logs
-	mkdir -p data/results/clustering/01_POD/AHC data/results/clustering/01_POD/GMM data/results/clustering/01_POD/HDBSCAN data/results/clustering/01_POD/k_means
+	mkdir -p data/results/clustering/01_POD/AHC data/results/clustering/01_POD/GMM data/results/clustering/01_POD/HDBSCAN data/results/clustering/01_POD/k_means data/results/clustering/01_POD/benchmarking
 	mkdir -p data/results/clustering/02_PONV/AHC data/results/clustering/02_PONV/GMM data/results/clustering/02_PONV/HDBSCAN data/results/clustering/02_PONV/k_means
 	mkdir -p figures/main/01_POD figures/main/02_PONV
 	mkdir -p figures/clustering/01_POD/AHC figures/clustering/01_POD/GMM figures/clustering/01_POD/HDBSCAN figures/clustering/01_POD/k_means figures/clustering/01_POD/PCA
 	mkdir -p figures/clustering/02_PONV/AHC figures/clustering/02_PONV/GMM figures/clustering/02_PONV/HDBSCAN figures/clustering/02_PONV/k_means figures/clustering/02_PONV/PCA
-	mkdir -p tables tables/01_POD tables/02_PONV
+	mkdir -p tables tables/01_POD tables/01_POD/benchmarking tables/02_PONV
 
 ################################################################################
 # Shared data extraction and surgical cohort
@@ -119,6 +121,18 @@ pod-filter-embeddings: dirs
 pod-tokenized-seq-lengths: dirs pod-cohort pod-templates pod-llm-template
 	$(PYTHON) scripts/03_descriptives/01_POD/pod_tokenized_seq_lengths_table.py
 
+pod-benchmark: pod-benchmark-clustering pod-benchmark-tables pod-benchmark-figures
+
+pod-benchmark-clustering: dirs pod-cohort
+	$(R) scripts/02_clean/01_POD/create_pod_med_reps.R
+	$(R) scripts/07_clustering/01_POD/benchmarking/pod_benchmark_HDBSCAN.R
+
+pod-benchmark-tables: dirs pod-benchmark-clustering
+	$(R) scripts/03_descriptives/01_POD/benchmarking/pod_benchmark_cluster_characteristics_tables.R
+
+pod-benchmark-figures: dirs pod-benchmark-clustering
+	$(R) -e "rmarkdown::render('scripts/03_descriptives/01_POD/benchmarking/pod_benchmark_HDBSCAN_figures.Rmd', quiet = FALSE)"
+
 ################################################################################
 # PONV application
 ################################################################################
@@ -152,7 +166,7 @@ manuscript: manuscript-tables manuscript-figures
 
 manuscript-tables: manuscript-pod manuscript-ponv
 
-manuscript-pod:
+manuscript-pod: pod-benchmark-tables
 	$(R) scripts/03_descriptives/01_POD/pod_baseline_characteristics.R
 	$(R) reports/clustering/01_POD/make_pod_clustering_results_tables.R
 	$(R) reports/clustering/01_POD/make_pod_clustering_results_tables_large_encoders.R
@@ -168,7 +182,7 @@ manuscript-ponv:
 
 manuscript-figures: manuscript-pod-figures manuscript-ponv-figures
 
-manuscript-pod-figures:
+manuscript-pod-figures: pod-benchmark-figures
 	$(R) -e "rmarkdown::render('scripts/03_descriptives/01_POD/HDBSCAN_clusters/pod_hdbscan_cl_list_2pcs_centered_unscaled_cluster_analysis.Rmd', quiet = FALSE)"
 
 manuscript-ponv-figures:
