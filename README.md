@@ -107,7 +107,15 @@ Run commands from the repository root.
    make ponv-embeddings-local
    ```
 
-10. Rebuild manuscript tables and scripted figure outputs.
+10. Run POD conventional-representation benchmarking, if desired.
+
+   This target creates binary, count, and cumulative-dose medication representations; runs PCA-based HDBSCAN benchmarking; and creates the associated benchmark tables and figure outputs.
+
+   ```bash
+   make pod-benchmark
+   ```
+
+11. Rebuild manuscript tables and scripted figure outputs.
 
    ```bash
    make manuscript
@@ -134,6 +142,7 @@ The [Makefile](Makefile) provides the main user-facing workflow.
 - `make pod-large-embeddings-local`: run POD Qwen3 and SFR encoder embeddings locally.
 - `make pod-filter-embeddings`: filter POD embeddings to the final POD cohort.
 - `make pod-tokenized-seq-lengths`: build the POD tokenized sequence length summary table.
+- `make pod-benchmark`: run POD conventional-representation benchmarking, including PCA-based HDBSCAN clustering, benchmark cluster-characteristics tables, and benchmark figure outputs.
 - `make ponv-cohort`: construct the PONV analysis cohort.
 - `make ponv-templates`: create PONV list and text templates.
 - `make ponv-embeddings-local`: run PONV encoder embeddings locally.
@@ -145,12 +154,12 @@ The [Makefile](Makefile) provides the main user-facing workflow.
 - `make manuscript`: rebuild manuscript tables and scripted figure outputs.
 - `make submit-all-slurm`: submit heavy embedding and clustering jobs to SLURM.
 
-The full `make reproduce` target runs extraction, HCUP source-file download, cohort construction, template generation, and manuscript outputs. It includes the POD decoder-LLM template step, so `LLAMA_MODEL_PATH` must be provided. Heavy embedding and clustering outputs should be generated locally or through the SLURM targets before rebuilding manuscript tables and figures that depend on them.
+The full `make reproduce` target runs extraction, HCUP source-file download, cohort construction, template generation, and manuscript outputs. It includes the POD decoder-LLM template step, so `LLAMA_MODEL_PATH` must be provided. Heavy embedding and clustering outputs should be generated locally or through the SLURM targets before rebuilding manuscript tables and figures that depend on them. POD benchmarking outputs are produced by `make pod-benchmark` and are also included through the POD manuscript table and figure targets.
 
 ## Directory Guide
 
 - `config/`: project configuration files, including `paths.yml`.
-- `data/`: generated data products. Raw extracts, derived cohorts, LLM inputs, embeddings, logs, and clustering results are written here. POD and PONV outputs use `01_POD` and `02_PONV` subfolders where applicable.
+- `data/`: generated data products. Raw extracts, derived cohorts, LLM inputs, embeddings, logs, and clustering results are written here. POD and PONV outputs use `01_POD` and `02_PONV` subfolders where applicable; POD benchmarking clustering results are written under `data/results/clustering/01_POD/benchmarking/`.
 - `figures/`: generated figure files, organized under `figures/main/` (main text figures) and `figures/clustering/` (supplementary clustering figures) with `01_POD` and `02_PONV` subfolders.
 - `reports/`: scripts for summary tables and clustering reports, organized by application.
 - `scripts/00_utils/`: shared R helper functions for POD and PONV analyses.
@@ -161,7 +170,7 @@ The full `make reproduce` target runs extraction, HCUP source-file download, coh
 - `scripts/05_slurm/`: SLURM submission scripts for heavier embedding and clustering jobs, organized by workflow and application.
 - `scripts/06_decoder_llm/`: POD decoder-LLM template generation scripts.
 - `scripts/07_clustering/`: PCA, clustering, and cluster assignment scripts in `01_POD/` and `02_PONV/`.
-- `tables/`: generated manuscript and supplemental tables in `01_POD/` and `02_PONV/`.
+- `tables/`: generated manuscript and supplemental tables in `01_POD/` and `02_PONV/`, including POD benchmarking tables under `tables/01_POD/benchmarking/`.
 
 ## External Data Files 
 
