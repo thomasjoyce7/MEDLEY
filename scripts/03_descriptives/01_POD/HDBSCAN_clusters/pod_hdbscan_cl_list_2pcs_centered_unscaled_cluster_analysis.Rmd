@@ -2671,18 +2671,184 @@ ggsave(
 )
 ```
 
-# Sample EHR Medication Profile
+# Hypothesis Testing 
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
-# Sample EHR medication profile (use as Figure 1 example)
-sample_profile <- pod_medications_filtered %>%
-    group_by(subject_id) %>%
-    filter(
-        n_distinct(medication, na.rm = TRUE) >= 4,
-        n() < 10
-    ) %>%
-    ungroup()
+# Perform hypothesis tests to compare subgroups with Benjamini-Hochberg FDR adjusted p-values
 
-sample_profile
+# Ensure that cluster is a factor variable
+pod_study_cohort_features$cluster <- factor(pod_study_cohort_features$cluster)
+
+# Mechanical ventilation proportions (Chi-square)
+mv_chisq <- chisq.test(table(pod_study_cohort_features$ventilator_use, pod_study_cohort_features$cluster))
+
+p_mv_chisq <- mv_chisq$p.value
+
+# Mechanical ventilation duration among ventilated patients (Kruskal-Wallis)
+ventilated_patients <- pod_study_cohort_features %>%
+  filter(ventilation_duration_mins > 0) %>%
+  mutate(ventilation_duration_days = ventilation_duration_mins /(60*24))
+
+mv_duration_kw <- kruskal.test(ventilation_duration_days ~ cluster, data = ventilated_patients)
+
+p_mv_duration_kw <- mv_duration_kw$p.value
+
+# Recurrent delirium (Chi-square)
+recurrent_delirium_chisq <- chisq.test(table(pod_study_cohort_features$recurrent, pod_study_cohort_features$cluster))
+
+p_recurrent_delirium_chisq <- recurrent_delirium_chisq$p.value
+
+# RASS at delirium onset (Kruskal-Wallis)
+rass_onset_scores <- rass_scores_filtered %>%
+  filter(
+    label == "Richmond-RAS Scale",
+    charttime == first_cam_positive_time
+  ) %>%
+  mutate(
+    cluster  = factor(cluster),
+    valuenum = as.numeric(valuenum))
+
+rass_kw <- kruskal.test(valuenum ~ cluster, data = rass_onset_scores)
+
+p_rass_kw <- rass_kw$p.value
+
+# Discharge location (Chi-square)
+pod_discharge_location <- pod_study_cohort_features %>%
+  mutate(
+    discharge_location = case_when(
+      discharge_location %in% c("HOME", "HOME HEALTH CARE") ~ "Home/HHC",
+      discharge_location == "REHAB" ~ "Rehab",
+      discharge_location == "SKILLED NURSING FACILITY" ~ "SNF",
+      discharge_location == "CHRONIC/LONG TERM ACUTE CARE" ~ "LTACH",
+      discharge_location %in% c(
+        "PSYCH FACILITY", "OTHER FACILITY", "ASSISTED LIVING",
+        "AGAINST ADVICE", "ACUTE HOSPITAL"
+      ) ~ "Other",
+      discharge_location == "HOSPICE" ~ "Hospice",
+      discharge_location == "DIED" ~ "Died"
+    ),
+    discharge_location = factor(
+      discharge_location,
+      levels = c(
+        "Died",
+        "Hospice",
+        "Other",
+        "LTACH",
+        "SNF",
+        "Rehab",
+        "Home/HHC"
+      ),
+      ordered = FALSE
+    )
+  )
+
+discharge_chisq <- chisq.test(table(pod_discharge_location$discharge_location, pod_discharge_location$cluster))
+
+p_discharge_chisq <- discharge_chisq$p.value
+
+# Delirium resolution (global log-rank)
+surv_data <- pod_study_cohort_features %>%
+  mutate(
+    time    = pod_resolution_days,
+    event   = as.integer(!censored),  # 1 = resolved, 0 = censored
+    cluster = factor(
+      cluster,
+      labels = paste("Cluster", sort(unique(cluster)))
+    )
+  )
+
+km_fit <- survfit(
+  Surv(time, event) ~ cluster,
+  data = surv_data
+)
+
+km_df <- data.frame(
+  time    = km_fit$time,
+  surv    = km_fit$surv,
+  cluster = rep(names(km_fit$strata), km_fit$strata)
+) %>%
+  mutate(
+    cluster = str_remove(cluster, "^cluster=")
+  )
+
+logrank_test <- survdiff(
+  Surv(time, event) ~ cluster,
+  data = surv_data
+)
+
+logrank_p <- 1 - pchisq(
+  logrank_test$chisq,
+  df = length(logrank_test$n) - 1
+)
+
+# Calculate the BH adjusted p-values and display in table
+# Format p-values
+format_pval <- function(p) {
+  ifelse(
+    p < 0.001,
+    "<0.001",
+    sprintf("%.3f", p)
+  )
+}
+
+# Calculate BH-adjusted p-values
+test <- c(
+  "Mechanical ventilation proportion (Chi-square)",
+  "Mechanical ventilation duration among ventilated patients (Kruskal–Wallis)",
+  "Recurrent delirium (Chi-square)",
+  "RASS score at delirium onset (Kruskal–Wallis)",
+  "Discharge location (Chi-square)",
+  "Delirium resolution time (Global log-rank)"
+)
+
+raw_pval <- c(
+  p_mv_chisq,
+  p_mv_duration_kw,
+  p_recurrent_delirium_chisq,
+  p_rass_kw,
+  p_discharge_chisq,
+  logrank_p
+)
+
+p_adj <- p.adjust(raw_pval, method = "BH")
+
+hypothesis_test_results <- data.frame(
+  `Hypothesis test` = test,
+  `Raw p-value` = format_pval(raw_pval),
+  `BH-adjusted p-value` = format_pval(p_adj),
+  check.names = FALSE
+)
+
+hypothesis_test_results <- hypothesis_test_results %>%
+  mutate(`Hypothesis test` = str_replace_all(`Hypothesis test`, "Kruskal.{1,5}Wallis", "Kruskal-Wallis"))
+
+kable(
+  caption = "POD Application Hypothesis Testing Results",
+  hypothesis_test_results,
+  align = c("l", "c", "c")
+)
+
+# Save latex table
+hypothesis_test_results_latex <- kable(
+  hypothesis_test_results,
+  format = "latex",
+  booktabs = TRUE,
+  longtable = FALSE,
+  caption = "Hypothesis testing results for the POD application.",
+  label = "tab:pod_hypothesis_tests",
+  align = c("l", "c", "c"),
+  escape = TRUE,
+  linesep = ""
+) %>%
+  kable_styling(
+    latex_options = c("hold_position"),
+    position = "center"
+  ) %>%
+  column_spec(1, width = "9cm") %>%
+  column_spec(2, width = "2.5cm") %>%
+  column_spec(3, width = "3cm")
+
+# Save as a .tex file
+dir.create("tables/01_POD", recursive = TRUE, showWarnings = FALSE)
+save_kable(hypothesis_test_results_latex,  "tables/01_POD/pod_hypothesis_test_results.tex")
 ```
-

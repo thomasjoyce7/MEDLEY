@@ -1673,3 +1673,138 @@ ggsave(
 
 admission_duration_plot
 ```
+
+# Hypothesis Testing 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Perform hypothesis tests to compare subgroups with Benjamini-Hochberg FDR adjusted p-values
+
+# Ensure that cluster is a factor variable
+ponv_cluster_characteristics$cluster <- factor(ponv_cluster_characteristics$cluster)
+
+# Modified Apfel risk score (Kruskal–Wallis)
+ponv_cluster_characteristics <- ponv_cluster_characteristics %>%
+  mutate(
+    postoperative_opioids = case_when(
+      opioids_day_1_to_2 == "Yes" | opioids_day_2_to_4 == "Yes" ~ "Yes",
+      TRUE ~ "No"
+    )
+  ) %>%
+  group_by(subject_id) %>%
+  mutate(
+    modified_apfel_risk_score = sum(
+      gender == "Female",
+      curr_or_prev_smoker == "No",
+      postoperative_opioids == "Yes"
+    )
+  ) %>%
+  ungroup()
+
+apfel_kw <- kruskal.test(modified_apfel_risk_score ~ cluster, data = ponv_cluster_characteristics)
+
+p_apfel_kw <- apfel_kw$p.value
+
+# Hospital length of stay (Kruskal-Wallis)
+hospital_los_kw <- kruskal.test(admission_duration_days ~ cluster, data = ponv_cluster_characteristics)
+
+p_hospital_los_kw <- hospital_los_kw$p.value
+
+# Discharge location (Chi-square)
+ponv_discharge_location <- ponv_cluster_characteristics %>%
+  mutate(
+    discharge_location = case_when(
+      discharge_location %in% c("HOME", "HOME HEALTH CARE") ~ "Home/HHC",
+      discharge_location == "REHAB" ~ "Rehab",
+      discharge_location == "SKILLED NURSING FACILITY" ~ "SNF",
+      discharge_location == "CHRONIC/LONG TERM ACUTE CARE" ~ "LTACH",
+      discharge_location %in% c(
+        "PSYCH FACILITY", "OTHER FACILITY", "ASSISTED LIVING",
+        "AGAINST ADVICE", "ACUTE HOSPITAL", "HEALTHCARE FACILITY",
+        "Unknown"
+      ) ~ "Other",
+      discharge_location == "HOSPICE" ~ "Hospice",
+      discharge_location == "DIED" ~ "Died"
+    ),
+    discharge_location = factor(
+      discharge_location,
+      levels = c(
+        "Died",
+        "Hospice",
+        "Other",
+        "LTACH",
+        "SNF",
+        "Rehab",
+        "Home/HHC"
+      ),
+      ordered = FALSE
+    )
+  )
+
+discharge_chisq <- chisq.test(table(ponv_discharge_location$discharge_location, ponv_discharge_location$cluster))
+
+p_discharge_chisq <- discharge_chisq$p.value
+
+# Calculate the BH adjusted p-values and display in table
+# Format p-values
+format_pval <- function(p) {
+  ifelse(
+    p < 0.001,
+    "<0.001",
+    sprintf("%.3f", p)
+  )
+}
+
+# Calculate BH-adjusted p-values
+test <- c(
+  "Modified Apfel risk score (Kruskal–Wallis)",
+  "Hospital length of stay (Kruskal–Wallis)",
+  "Discharge location (Chi-square)"
+)
+
+raw_pval <- c(
+  p_apfel_kw, 
+  p_hospital_los_kw,
+  p_discharge_chisq)
+
+p_adj <- p.adjust(raw_pval, method = "BH")
+
+hypothesis_test_results <- data.frame(
+  `Hypothesis test` = test,
+  `Raw p-value` = format_pval(raw_pval),
+  `BH-adjusted p-value` = format_pval(p_adj),
+  check.names = FALSE
+)
+
+hypothesis_test_results <- hypothesis_test_results %>%
+  mutate(`Hypothesis test` = str_replace_all(`Hypothesis test`, "Kruskal.{1,5}Wallis", "Kruskal-Wallis"))
+
+kable(
+  caption = "PONV Application Hypothesis Testing Results",
+  hypothesis_test_results,
+  align = c("l", "c", "c")
+)
+
+# Create LaTeX table
+ponv_hypothesis_test_results_latex <- kable(
+  hypothesis_test_results,
+  format = "latex",
+  booktabs = TRUE,
+  longtable = FALSE,
+  caption = "Hypothesis testing results for the PONV application.",
+  label = "tab:ponv_hypothesis_tests",
+  align = c("l", "c", "c"),
+  escape = TRUE,
+  linesep = ""
+) %>%
+  kable_styling(
+    latex_options = "hold_position",
+    position = "center"
+  ) %>%
+  column_spec(1, width = "9cm") %>%
+  column_spec(2, width = "2.5cm") %>%
+  column_spec(3, width = "3cm")
+
+# Save table as a .tex file
+dir.create("tables/02_PONV", recursive = TRUE, showWarnings = FALSE)
+save_kable(ponv_hypothesis_test_results_latex,  "tables/02_PONV/ponv_hypothesis_test_results.tex")
+```
