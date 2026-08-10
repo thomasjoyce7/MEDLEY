@@ -10,8 +10,9 @@ LLAMA_MODEL_PATH ?=
 .PHONY: help all reproduce dirs \
 	extract hcup-source-files surgery \
 	pod pod-cohort pod-templates pod-llm-template pod-embeddings-local pod-large-embeddings-local pod-filter-embeddings pod-tokenized-seq-lengths \
+	pod-hypothesis-tests \
 	pod-benchmark pod-benchmark-clustering pod-benchmark-tables pod-benchmark-figures \
-	ponv ponv-cohort ponv-templates ponv-embeddings-local \
+	ponv ponv-cohort ponv-templates ponv-embeddings-local ponv-hypothesis-tests \
 	manuscript manuscript-pod manuscript-ponv manuscript-tables manuscript-figures manuscript-pod-figures manuscript-ponv-figures \
 	submit-pod-embeddings submit-pod-tokenized-seq-lengths submit-ponv-embeddings submit-pod-clustering submit-ponv-clustering submit-all-slurm \
 	logs
@@ -35,8 +36,10 @@ help:
 	@echo "  make pod-filter-embeddings  Filter POD embeddings to the final POD cohort"
 	@echo "  make pod-tokenized-seq-lengths"
 	@echo "                                Build POD tokenized sequence length summary table"
+	@echo "  make pod-hypothesis-tests   Render POD hypothesis testing table"
 	@echo "  make pod-benchmark          Run POD conventional-representation benchmarking"
 	@echo "  make ponv-embeddings-local  Run PONV encoder embeddings locally"
+	@echo "  make ponv-hypothesis-tests  Render PONV hypothesis testing table"
 	@echo "  make submit-all-slurm       Submit embedding and clustering jobs to SLURM"
 	@echo ""
 	@echo "Utilities:"
@@ -121,6 +124,9 @@ pod-filter-embeddings: dirs
 pod-tokenized-seq-lengths: dirs pod-cohort pod-templates pod-llm-template
 	$(PYTHON) scripts/03_descriptives/01_POD/pod_tokenized_seq_lengths_table.py
 
+pod-hypothesis-tests: dirs
+	$(R) -e "rmarkdown::render('scripts/03_descriptives/01_POD/HDBSCAN_clusters/pod_hdbscan_cl_list_2pcs_centered_unscaled_cluster_analysis.Rmd', quiet = FALSE)"
+
 pod-benchmark: pod-benchmark-clustering pod-benchmark-tables pod-benchmark-figures
 
 pod-benchmark-clustering: dirs pod-cohort
@@ -158,6 +164,9 @@ ponv-embeddings-local: dirs ponv-templates
 	$(PYTHON) scripts/04_embeddings/02_PONV/ponv_gatortron_base_embeddings_4windows.py
 	$(PYTHON) scripts/04_embeddings/02_PONV/ponv_bert_base_uncased_embeddings_4windows.py
 
+ponv-hypothesis-tests: dirs
+	$(R) -e "rmarkdown::render('scripts/03_descriptives/02_PONV/GMM_clusters_4windows/ponv_gmm_gt_base_text_4windows_5pcs_centered_unscaled_8clusters.Rmd', quiet = FALSE)"
+
 ################################################################################
 # Manuscript tables and scripted figure outputs
 ################################################################################
@@ -166,7 +175,7 @@ manuscript: manuscript-tables manuscript-figures
 
 manuscript-tables: manuscript-pod manuscript-ponv
 
-manuscript-pod: pod-benchmark-tables
+manuscript-pod: pod-benchmark-tables pod-hypothesis-tests
 	$(R) scripts/03_descriptives/01_POD/pod_baseline_characteristics.R
 	$(R) reports/clustering/01_POD/make_pod_clustering_results_tables.R
 	$(R) reports/clustering/01_POD/make_pod_clustering_results_tables_large_encoders.R
@@ -174,7 +183,7 @@ manuscript-pod: pod-benchmark-tables
 	$(R) scripts/03_descriptives/01_POD/pod_hdbscan_cluster_medications.R
 	$(R) scripts/03_descriptives/01_POD/pod_hdbscan_noise_observations.R
 
-manuscript-ponv:
+manuscript-ponv: ponv-hypothesis-tests
 	$(R) scripts/03_descriptives/02_PONV/make_ponv_patients_characteristics_table.R
 	$(R) reports/clustering/02_PONV/make_ponv_clustering_results_tables_4windows.R
 	$(R) scripts/03_descriptives/02_PONV/Tables_4windows/make_ponv_gmm_gt_base_text_4windows_cluster_characteristics_table.R
@@ -182,11 +191,9 @@ manuscript-ponv:
 
 manuscript-figures: manuscript-pod-figures manuscript-ponv-figures
 
-manuscript-pod-figures: pod-benchmark-figures
-	$(R) -e "rmarkdown::render('scripts/03_descriptives/01_POD/HDBSCAN_clusters/pod_hdbscan_cl_list_2pcs_centered_unscaled_cluster_analysis.Rmd', quiet = FALSE)"
+manuscript-pod-figures: pod-benchmark-figures pod-hypothesis-tests
 
-manuscript-ponv-figures:
-	$(R) -e "rmarkdown::render('scripts/03_descriptives/02_PONV/GMM_clusters_4windows/ponv_gmm_gt_base_text_4windows_5pcs_centered_unscaled_8clusters.Rmd', quiet = FALSE)"
+manuscript-ponv-figures: ponv-hypothesis-tests
 
 ################################################################################
 # SLURM submission targets for heavy embedding and clustering jobs
