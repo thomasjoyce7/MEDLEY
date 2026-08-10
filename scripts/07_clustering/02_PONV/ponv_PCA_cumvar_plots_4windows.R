@@ -64,7 +64,7 @@ pca_variance_summary <- function(embeddings_df, plot = TRUE) {
       labs(
         title = paste("Method:", short_name), 
         x = "Number of Principal Components",
-        y = "Cumulative Proporiton of Variance")+
+        y = "Cumulative Proportion of Variance")+
       theme_minimal(base_size = 7.5, base_family = "") +
       theme(
         panel.grid.major = element_blank(),
