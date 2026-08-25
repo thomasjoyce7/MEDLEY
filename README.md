@@ -2,11 +2,11 @@
 
 This repository contains code for the MEDLEY framework described in "Large language model representation learning of longitudinal medication trajectories reveals postoperative recovery phenotypes." 
 
-The MEDLEY framework transforms tabular medication profiles from electronic health records into standardized clinical narratives, generates large language model embeddings, and clusters patient-level representations to reveal clinically meaningful medication-use phenotypes.
+The MEDLEY framework transforms tabular medication profiles from electronic health records into standardized clinical narratives, generates large language model embeddings, and clusters patient-level representations to reveal clinically interpretable medication use phenotypes.
 
 ![Overview of the MEDLEY framework](figures/main/Figure1.png)
 
-**Figure 1. Overview of the MEDLEY framework.**
+**Figure 1. MEDLEY framework for EHR-based phenotyping of longitudinal medication trajectories.**
 
 The code is organized around two applications:
 
@@ -23,7 +23,7 @@ Database access is restricted to credentialed PhysioNet users who have completed
 
 ## MEDLEY Overview
 
-MEDLEY (**M**edication **E**mbe**D**dings for **L**ongitudinal Ph**E**not**Y**ping) is a framework for phenotyping patients from longitudinal medication-use profiles.
+MEDLEY (**M**edication **E**mbe**D**dings for **L**ongitudinal Ph**E**not**Y**ping) is a framework for phenotyping patients from longitudinal medication trajectories.
 
 The computational workflow follows the manuscript framework:
 
