@@ -6,7 +6,7 @@ The MEDLEY framework transforms tabular medication profiles from electronic heal
 
 ![Overview of the MEDLEY framework](figures/main/Figure1.png)
 
-**Figure 1. MEDLEY framework for EHR-based phenotyping of longitudinal medication trajectories.**
+**Figure 1. MEDLEY framework for EHR-based phenotyping of longitudinal medication trajectories.** For illustration, this figure presents a synthetic medication record for a single patient.
 
 The code is organized around two applications:
 
