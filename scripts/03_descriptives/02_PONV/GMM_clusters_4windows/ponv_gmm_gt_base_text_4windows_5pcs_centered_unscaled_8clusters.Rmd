@@ -452,7 +452,7 @@ save_kable(
 
 ### Modified Apfel Risk Score
 
-The modified Apfel risk score is calculated on a scale of 0-3. We add 1 point for the following categories: female gender, nonsmoker, postoperative opiods (i.e., received opioids 1 to 4 days after surgery).
+The modified Apfel risk score is calculated on a scale of 0-3. We add 1 point for the following categories: female gender, nonsmoker, postoperative opioids (i.e., received opioids 1 to 4 days after surgery).
 
 The normal Apfel risk index for PONV is on a scale of 0-4 and also includes a point for history of PONV or motion sickness. However, this information is unavailable in MIMIC-IV. 
 
@@ -467,48 +467,46 @@ summary_df <- ponv_cluster_characteristics %>%
     se_apfel   = sd_apfel / sqrt(n)
   )
 
-# Bar plot displaying mean modified Apfel score with SE bars
-modified_apfel_score_bar_plot <- ggplot() +
-  
-  geom_bar(
-    data = summary_df,
-    aes(x = factor(cluster), y = mean_apfel, fill = factor(cluster)),
-    stat = "identity", width = 0.6, alpha = 1, color = "black"
-  ) +
-  
-  scale_fill_manual(values = cluster_colors) +
-  scale_color_manual(values = cluster_colors) +
-  
-  # Two-sided SE error bar
-  geom_errorbar(
-    data = summary_df,
-    aes(
-      x = factor(cluster),
-      ymin = mean_apfel - se_apfel,
-      ymax = mean_apfel + se_apfel
-    ),
-    width = 0.12,
-    linewidth = 0.5
-  ) +
-  
-  # mean labels ABOVE the SE bar
-  geom_text(
-    data = summary_df,
-    aes(
-      x = factor(cluster),
-      y = mean_apfel + se_apfel + 0.15,
-      label = round(mean_apfel, 2)
-    ),
-    size = 4.5,
-    fontface = "bold"
-  ) +
-  
+# Modified Apfel risk score bar plot 
+apfel_pct <- ponv_cluster_characteristics %>%
+  mutate(cluster = factor(cluster),
+         modified_apfel_risk_score = factor(modified_apfel_risk_score)) %>%
+  group_by(cluster, modified_apfel_risk_score) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(cluster) %>%
+  mutate(
+    pct = 100 * n / sum(n)
+  )
+
+modified_apfel_score_bar_plot <- ggplot(
+  apfel_pct,
+  aes(x = modified_apfel_risk_score, y = pct, fill = cluster)
+) +
+  geom_col(width = 0.8) +
+  facet_wrap(
+  ~ cluster,
+  ncol = 4,
+  labeller = labeller(cluster = function(x) paste("Cluster", x))
+) +
+  scale_fill_manual(values = cluster_colors, guide = "none") +
+  scale_y_continuous(
+  limits = c(0, 50),
+  breaks = c(0, 20, 40),
+  labels = c("0", "20", "40")
+) +
   labs(
-    x = "Cluster",
-    y = "Modified Apfel risk score"
+    x = "Modified Apfel risk score",
+    y = "Percentage of patients"
   ) +
-  theme_nature +
-  theme(legend.position = "none")
+  geom_text(
+  aes(
+    label = paste0(
+      sprintf("%.1f%%", pct)),
+    y = pct
+  ),
+  vjust = -0.3,
+  size = 2.7
+) + theme_nature
 
 modified_apfel_score_bar_plot
 

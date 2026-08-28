@@ -1405,54 +1405,65 @@ dexmed_patient <- dexmed %>%
 dexmed_cluster_summary <- dexmed_patient %>%
   group_by(cluster) %>%
   summarise(
-    mean_dose_per_day = mean(dose_per_day_mcg),
-    sd_dose_per_day   = sd(dose_per_day_mcg),
+    median_dose_per_day = median(dose_per_day_mcg),
     n_patients        = n(),
     .groups = "drop"
   )
 
-# Bar plot
-dexmed_dose_plot <- ggplot(
-  dexmed_cluster_summary,
+# Violin plot
+dexmed_dose_violin_plot <- ggplot(
+  dexmed_patient,
   aes(
     x = factor(cluster),
-    y = mean_dose_per_day,
+    y = dose_per_day_mcg,
     fill = factor(cluster)
   )
 ) +
-  geom_col(width = 0.7) +
-  geom_errorbar(
+  geom_violin(trim = FALSE, alpha = 0.9) +
+
+  # Median point
+  geom_point(
+    data = dexmed_cluster_summary,
     aes(
-      ymin = mean_dose_per_day - sd_dose_per_day / sqrt(n_patients),
-      ymax = mean_dose_per_day + sd_dose_per_day / sqrt(n_patients)
+      x = factor(cluster),
+      y = median_dose_per_day
     ),
-    width = 0.2
+    shape = 21,
+    size = 2.5,
+    fill = "white"
   ) +
-geom_text(
-  aes(
-    y = mean_dose_per_day + sd_dose_per_day / sqrt(n_patients),
-    label = sprintf("%.1f", mean_dose_per_day)
-  ),
-  vjust = -0.7,
-  size = 3.5
-)+
-  scale_y_continuous(
-    expand = expansion(mult = c(0, 0.15))
+
+  # Median label
+  geom_text(
+    data = dexmed_cluster_summary,
+    aes(
+      x = factor(cluster),
+      y = median_dose_per_day,
+      label = sprintf("%.1f", median_dose_per_day)
+    ),
+    vjust = -0.8,
+    size = 3.5
   ) +
+
   scale_fill_manual(values = cluster_colors, guide = "none") +
+
+   scale_y_log10(
+   breaks = c(1, 10, 100, 1000, 10000),
+   labels = c("1", "10", "100", "1000", "10000"),
+   expand = expansion(mult = c(0.05, 0.15))
+ )+
+
   labs(
     x = "Cluster",
-    y = "Mean cumulative dexmedetomidine dose (mcg/day)",
-    #title = "Dexmedetomidine mean daily doses during delirium",
-    #subtitle = "Only treated patients included"
+    y = "Dexmedetomidine dose (mcg/day, log scale)"
   ) +
   theme_nature
 
-dexmed_dose_plot
+dexmed_dose_violin_plot
 
 ggsave(
-  "figures/main/01_POD/pod_mean_cumulative_daily_dexmedetomidine_dose_during_delirium_bar_plot.png",
-  dexmed_dose_plot,
+  "figures/main/01_POD/pod_daily_dexmedetomidine_dose_during_delirium_violin_plot.png",
+  dexmed_dose_violin_plot,
   width  = 7.0,
   height = 4.5,
   dpi    = 300,
