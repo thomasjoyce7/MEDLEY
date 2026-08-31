@@ -1,6 +1,6 @@
 # MEDLEY Code Repository
 
-This repository contains code for the MEDLEY framework described in "Large language model representation learning of longitudinal medication trajectories reveals postoperative recovery phenotypes." 
+This repository contains code for the MEDLEY framework described in "Large language model representation learning of electronic health record medication trajectories reveals postoperative recovery phenotypes."
 
 The MEDLEY framework transforms tabular medication profiles from electronic health records into standardized clinical narratives, generates large language model embeddings, and clusters patient-level representations to reveal clinically interpretable medication use phenotypes.
 
@@ -23,13 +23,13 @@ Database access is restricted to credentialed PhysioNet users who have completed
 
 ## MEDLEY Overview
 
-MEDLEY (**M**edication **E**mbe**D**dings for **L**ongitudinal Ph**E**not**Y**ping) is a framework for phenotyping patients from longitudinal medication trajectories.
+MEDLEY (**M**edication **E**mbe**D**dings for **L**ongitudinal Ph**E**not**Y**ping) is a framework for phenotyping patients from medication trajectories in electronic health records.
 
 The computational workflow follows the manuscript framework:
 
 1. Extract medication administrations and cohort variables from MIMIC-IV.
 2. Clean medication names, administrations, timing, routes, doses, demographics, clinical variables, and cohort identifiers.
-3. Serialize tabular medication histories into list and text templates; for POD, optionally generate decoder-LLM summaries.
+3. Serialize tabular medication histories into list and text templates; for POD, optionally generate decoder LLM summaries.
 4. Generate patient-level encoder embeddings from the serialized medication histories.
 5. Run PCA, clustering, and cluster assignment workflows.
 6. Produce manuscript tables and scripted figure outputs for subgroup analysis and phenotyping.
@@ -89,7 +89,7 @@ Run commands from the repository root.
    make ponv-templates
    ```
 
-8. Generate the POD decoder-LLM template.
+8. Generate the POD decoder LLM template.
 
    This step requires the user to provide a local model path or Hugging Face model identifier.
 
@@ -107,9 +107,9 @@ Run commands from the repository root.
    make ponv-embeddings-local
    ```
 
-10. Run POD conventional-representation benchmarking, if desired.
+10. Run POD conventional representation benchmarking, if desired.
 
-   This target creates binary, count, and cumulative-dose medication representations; runs PCA-based HDBSCAN benchmarking; and creates the associated benchmark tables and figure outputs.
+   This target creates binary, count, and cumulative dose medication representations; runs PCA-based HDBSCAN benchmarking; and creates the associated benchmark tables and figure outputs.
 
    ```bash
    make pod-benchmark
@@ -137,7 +137,7 @@ The [Makefile](Makefile) provides the main user-facing workflow.
 - `make surgery`: construct the shared surgical cohort files.
 - `make pod-cohort`: construct the POD analysis cohort.
 - `make pod-templates`: create POD list and text templates.
-- `make pod-llm-template`: generate POD decoder-LLM summaries in `data/llm_inputs/`.
+- `make pod-llm-template`: generate POD decoder LLM summaries in `data/llm_inputs/`.
 - `make pod-embeddings-local`: run POD encoder embeddings locally.
 - `make pod-large-embeddings-local`: run POD Qwen3 and SFR encoder embeddings locally.
 - `make pod-filter-embeddings`: filter POD embeddings to the final POD cohort.
@@ -154,7 +154,7 @@ The [Makefile](Makefile) provides the main user-facing workflow.
 - `make manuscript`: rebuild manuscript tables and scripted figure outputs.
 - `make submit-all-slurm`: submit heavy embedding and clustering jobs to SLURM.
 
-The full `make reproduce` target runs extraction, HCUP source-file download, cohort construction, template generation, and manuscript outputs. It includes the POD decoder-LLM template step, so `LLAMA_MODEL_PATH` must be provided. Heavy embedding and clustering outputs should be generated locally or through the SLURM targets before rebuilding manuscript tables and figures that depend on them. POD benchmarking outputs are produced by `make pod-benchmark` and are also included through the POD manuscript table and figure targets.
+The full `make reproduce` target runs extraction, HCUP source file download, cohort construction, template generation, and manuscript outputs. It includes the POD decoder LLM template step, so `LLAMA_MODEL_PATH` must be provided. Heavy embedding and clustering outputs should be generated locally or through the SLURM targets before rebuilding manuscript tables and figures that depend on them. POD benchmarking outputs are produced by `make pod-benchmark` and are also included through the POD manuscript table and figure targets.
 
 ## Directory Guide
 
@@ -168,7 +168,7 @@ The full `make reproduce` target runs extraction, HCUP source-file download, coh
 - `scripts/03_descriptives/`: descriptive analyses, table scripts, and manuscript figure notebooks, organized by application.
 - `scripts/04_embeddings/`: POD and PONV serialization and encoder embedding scripts in `01_POD/` and `02_PONV/`.
 - `scripts/05_slurm/`: SLURM submission scripts for heavier embedding and clustering jobs, organized by workflow and application.
-- `scripts/06_decoder_llm/`: POD decoder-LLM template generation scripts.
+- `scripts/06_decoder_llm/`: POD decoder LLM template generation scripts.
 - `scripts/07_clustering/`: PCA, clustering, and cluster assignment scripts in `01_POD/` and `02_PONV/`.
 - `tables/`: generated manuscript and supplemental tables in `01_POD/` and `02_PONV/`, including POD benchmarking tables under `tables/01_POD/benchmarking/`.
 
@@ -201,7 +201,7 @@ paths:
 
 R extraction scripts also respect the `MIMICIV_DB_PATH` environment variable, which is the recommended way to point the code to a local database without editing tracked files.
 
-The POD decoder-LLM script requires a model path or Hugging Face identifier. Provide it through the Makefile variable:
+The POD decoder LLM script requires a model path or Hugging Face identifier. Provide it through the Makefile variable:
 
 ```bash
 make pod-llm-template LLAMA_MODEL_PATH=/path/or/huggingface-id
@@ -227,7 +227,3 @@ The project uses both R and Python.
 ## Notes For Reuse
 
 This repository is intended to be run as a reproducible code supplement, but some steps are computationally expensive. In practice, users may run cohort construction and template generation locally, then submit embedding and clustering jobs through SLURM or another GPU-enabled environment.
-
-## License
-
-This project is released under the MIT License.
